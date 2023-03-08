@@ -54,4 +54,3 @@ from art.attacks.evasion.targeted_universal_perturbation import TargetedUniversa
 from art.attacks.evasion.virtual_adversarial import VirtualAdversarialMethod
 from art.attacks.evasion.wasserstein import Wasserstein
 from art.attacks.evasion.zoo import ZooAttack
-from art.attacks.evasion.corruption import frost, contrast, fog, brightness
