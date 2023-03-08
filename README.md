@@ -10,7 +10,7 @@ For environment requirements, please refer to README_original.md. We have also p
 After satisfy the enviroment requirements, you could install the code with command line:
 ```
 cd adversarial-robustness-toolbox
-pip install .
+pip install -e .
 ```
 
 ## Preparation
