@@ -17,6 +17,20 @@ pip install -e .
 Download the COCO category-wise json files from [Google Drive:](https://drive.google.com/file/d/1rJLqXY4tUAGGjG82stwHoCapfSTf3p_y/view?usp=share_link)
 unzip the compressed folder in main folder and name it: category_json.
 
+In the affine robustness experiments, we need to extract the transformation parameters of the torchvision RandomAffine transformation. Thus please open your torchvision install directory and edit the forward function in the RandomAffine class, e.g. '/home/xxx/anaconda3/envs/myclone/lib/python3.7/site-packages/torchvision/transforms/transforms.py'. 
+
+edit the return from 
+
+'''
+return F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=self.center)
+'''
+
+to 
+
+'''
+return F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=self.center), ret
+'''
+
 ## Example Testing
 We provide example patches for all baseline testing. Each run will compute high confident IoU automatically. Detections of patched and unpatched images are also saved. You can try different categories like "person", "bus", "bottle", "chair", "laptop" etc.
 
