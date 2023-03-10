@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 patch_length = 16
-im_length = 224
+im_length = 300
 
 # -*- coding: utf-8 -*-
 
@@ -125,7 +125,7 @@ def clipped_zoom(img, zoom_factor):
 
     return img[trim_top:trim_top + h, trim_top:trim_top + h][np.newaxis, ...]
 
-def plasma_fractal(mapsize=256, wibbledecay=3):
+def plasma_fractal(mapsize=512, wibbledecay=3):
     """
     Generate a heightmap using diamond-square algorithm.
     Return square 2d array, side length 'mapsize', of floats in range 0-255.
@@ -313,6 +313,7 @@ class DPatch(EvasionAttack):
         y: Optional[np.ndarray] = None,
         target_label: Optional[Union[int, List[int], np.ndarray]] = None,
         aware=True,
+        model_name="frcnn",
         **kwargs
     ) -> np.ndarray:
         """
@@ -364,12 +365,15 @@ class DPatch(EvasionAttack):
 
                 patched_images, _ = random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
                 if aware:
-                    # corruption-aware 
+                    # corruption-aware level 3 training
                     patched_images = self.frost(patched_images, bases, train=aware, severity=3)
                 patched_images = patched_images.to(torch.float32) / 255.
                 self.estimator._model.train()
                 loss = self.estimator._model(patched_images, [batch_target_cuda])
-                loss_sum = loss['loss_box_reg'] + loss['loss_rpn_box_reg'] + 0.1* loss['loss_classifier']
+                if model_name == "frcnn":
+                    loss_sum = loss['loss_box_reg'] + loss['loss_rpn_box_reg'] + 0.1* loss['loss_classifier']
+                else:
+                    loss_sum = loss['bbox_regression'] + 0.05*loss['classification'] # ssd
                 loss_sum.retain_grad()
                 grad = torch.autograd.grad(loss_sum, patch)[0]
                 updated_patch = fgsm_attack(patch, self.learning_rate, grad)
@@ -378,13 +382,17 @@ class DPatch(EvasionAttack):
                 grad.zero_()
                 patch = torch.clamp(updated_patch,0,255)
 
-                if i_step % 1 == 0:  # == self.max_iter - 1:
-                    train_loss_final[0] += loss['loss_box_reg'].data / len(index)
-                    train_loss_final[1] += loss['loss_classifier'].data / len(index)
+                if i_step % 1 == 0:  
+                    if model_name == "frcnn":
+                        train_loss_final[0] += loss['loss_box_reg'].data / len(index)
+                        train_loss_final[1] += loss['loss_classifier'].data / len(index)
+                    else:
+                        train_loss_final[0] += loss['bbox_regression'].data / len(index)
+                        train_loss_final[1] += loss['classification'].data / len(index)
             
             acc_loss1.append(train_loss_final[0].cpu().numpy())
             acc_loss2.append(train_loss_final[1].cpu().numpy())
-            print(train_loss_final)
+            print("regression_loss:", train_loss_final[0].item(), "classification_loss:", train_loss_final[1].item())
         return patch.detach().cpu().numpy(), acc_loss1, acc_loss2
 
     def gaussian_noise(self, x, severity=1):
@@ -418,8 +426,8 @@ class DPatch(EvasionAttack):
         x = np.uint8(gaussian(np.array(x) / 255., sigma=c[0], multichannel=True) * 255)
         # locally shuffle pixels
         for i in range(c[2]):
-            for h in range(224 - c[1], c[1], -1):
-                for w in range(224 - c[1], c[1], -1):
+            for h in range(im_length - c[1], c[1], -1):
+                for w in range(im_length - c[1], c[1], -1):
                     dx, dy = np.random.randint(-c[1], c[1], size=(2,))
                     h_prime, w_prime = h + dy, w + dx
                     # swap
@@ -452,7 +460,7 @@ class DPatch(EvasionAttack):
         x = cv2.imdecode(np.fromstring(x.make_blob(), np.uint8),
                         cv2.IMREAD_UNCHANGED)
 
-        if x.shape != (224, 224):
+        if x.shape != (im_length, im_length):
             return np.expand_dims(np.clip(x[..., [2, 1, 0]], 0, 255), 0)  # BGR to RGB
         else:  # greyscale to RGB
             return np.clip(np.array([x, x, x]).transpose((1, 2, 0)), 0, 255)
@@ -497,10 +505,10 @@ class DPatch(EvasionAttack):
                                 cv2.IMREAD_UNCHANGED) / 255.
         snow_layer = snow_layer[..., np.newaxis]
 
-        x = c[6] * x + (1 - c[6]) * np.maximum(x, cv2.cvtColor(x[0], cv2.COLOR_RGB2GRAY).reshape(224, 224, 1) * 1.5 + 0.5)
+        x = c[6] * x + (1 - c[6]) * np.maximum(x, cv2.cvtColor(x[0], cv2.COLOR_RGB2GRAY).reshape(im_length, im_length, 1) * 1.5 + 0.5)
         return np.clip(x + snow_layer + np.rot90(snow_layer, k=2), 0, 1) * 255
 
-    def spatter(self, x, severity=4):
+    def spatter(self, x, severity=3):
         c = [(0.65, 0.3, 4, 0.69, 0.6, 0),
             (0.65, 0.3, 3, 0.68, 0.6, 0),
             (0.65, 0.3, 2, 0.68, 0.5, 0),
@@ -541,8 +549,8 @@ class DPatch(EvasionAttack):
         c = [0.6, 0.5, 0.4, 0.3, 0.25][severity - 1]
         x = PILImage.fromarray(np.uint8(x[0]))
 
-        x = x.resize((int(224 * c), int(224 * c)), PILImage.BOX)
-        x = x.resize((224, 224), PILImage.BOX)
+        x = x.resize((int(im_length * c), int(im_length * c)), PILImage.BOX)
+        x = x.resize((im_length, im_length), PILImage.BOX)
 
         return np.expand_dims(np.array(x), 0)
 
@@ -633,7 +641,7 @@ class DPatch(EvasionAttack):
                 min_y, max_y = np.min(obj_y), np.max(obj_y)
                 new_bbox.append([min_y, min_x, max_y, max_x])
             else:
-                new_bbox.append([0, 0, 224, 224])
+                new_bbox.append([0, 0, im_length, im_length])
         
         patched_images = np.expand_dims(np.array(patched_images).astype(np.float32), 0)
         if not clear:
@@ -677,7 +685,7 @@ class DPatch(EvasionAttack):
                 # normalized_x, normalized_y, normalized_x+normalized_width, normalized_y+normalized_height
                 new_bbox.append([min_y, min_x, max_y, max_x])
             else:
-                new_bbox.append([0, 0, 224, 224])
+                new_bbox.append([0, 0, im_length, im_length])
 
         patched_images = np.expand_dims(np.array(patched_images).astype(np.float32), 0)
         if not clear:
@@ -721,6 +729,7 @@ class DPatch(EvasionAttack):
                 patched_images = getattr(self, self.cdict[corrupt_type])(patched_images, bases, severity=severity)
             else:
                 patched_images = getattr(self, self.cdict[corrupt_type])(patched_images, severity=severity)
+        # (1, 224, 224, 3)
         return patched_images, rand_n
 
     def _check_params(self) -> None:
