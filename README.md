@@ -7,7 +7,7 @@
 ## Installation
 This code based on the [Adversarial Robustness Toolbox 1.7.2](https://github.com/Trusted-AI/adversarial-robustness-toolbox/tree/1.7.2) 
 
-- Step 0: For environment requirements, we provide a conda environment file in the main folder.
+- Step 0: For environment requirements, we provide a pip requirement.txt file and a conda environment file in the main folder.
 
 - Step 1: Install adversarial-robustness-toolbox
 ```
@@ -55,12 +55,13 @@ Test F-RCNN corruption-agnostic patch robustness under a series of corruption:
 ```
 python angelic_global_main.py --agnostic --cate bus --model_name frcnn --coco_path your_COCO_path 
 ```
+### Corruption-Aware Extra Tests
 
 Test F-RCNN partially applied (only some of the objects are patched) corruption-aware patch robustness under frost corruption:
 ```
 python angelic_global_main.py --cate bus --partial --model_name frcnn --coco_path your_COCO_path 
 ```
-### Corruption-Aware Extra Tests
+
 Test F-RCNN random placed (not in the center) corruption-aware patch robustness under frost corruption:
 ```
 python angelic_global_main.py --cate bus --model_name frcnn --coco_path your_COCO_path --randplace 
