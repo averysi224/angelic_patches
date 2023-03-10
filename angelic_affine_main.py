@@ -197,7 +197,7 @@ def main():
     DIR_BASE = 'results/{}/affine_{}'.format(model_name, cate) 
     im_length = 224 if model_name == "frcnn" else 300
     path2data =  args.coco_path # path to coco dataset
-    path2json = '../coco-manager/instances_'+cate+'_train2017.json'  # filtered single category json
+    path2json = 'category_json/instances_'+cate+'_train2017.json'  # filtered single category json
 
     if model_name == "frcnn":
         mdl = PyTorchFasterRCNN(

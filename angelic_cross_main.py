@@ -1,13 +1,15 @@
 import torch
 import torchvision
 import cv2
+import argparse
 import numpy as np
 import matplotlib.pyplot as plt
 from pycocotools import mask as maskUtils
 
 from art.estimators.object_detection import PyTorchFasterRCNN
 from pytorch_ssd import PyTorchSSD
-from art.attacks.evasion import DPatch
+from apatch import AngelicPatch
+from tqdm import tqdm
 import pdb
 import os
 import json
@@ -21,11 +23,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Batch size
 train_batch_size = 1
-CLS=1 # category label
-cocoCLS=CLS
-cate = 'person'
-DIR_BASE='retina_double'  # savedir base
-model_name = "fcos"
+cate_list = {"person":1, "bus":6, "bottle": 44, "bowl":51, "chair":62, "laptop":73}
 
 COCO_INSTANCE_CATEGORY_NAMES = [
     "__background__",
@@ -130,7 +128,7 @@ class NumpyEncoder(json.JSONEncoder):
             return float(obj)
         return json.JSONEncoder.default(self, obj)
 
-def extract_predictions(predictions_, name, cls=CLS, thresh=0.5, eps=1):
+def extract_predictions(predictions_, name, cls, thresh=0.5, eps=1):
     # Get the predicted class
     predictions_class = [COCO_INSTANCE_CATEGORY_NAMES[i] for i in list(predictions_["labels"])]
 
@@ -164,7 +162,7 @@ def extract_predictions(predictions_, name, cls=CLS, thresh=0.5, eps=1):
 
     return predictions_["labels"], predictions_boxes, predictions_score, count
 
-def plot_image_with_boxes(img, boxes, pred_cls, cls=CLS, gt_boxes=None):
+def plot_image_with_boxes(img, boxes, pred_cls, cls, gt_boxes=None):
     text_size = 1
     text_th = 2
     rect_th = 2
@@ -223,10 +221,26 @@ def main():
     model.eval()
     ssd = PyTorchSSD(
         clip_values=(0, 255), model=model, attack_losses=["bbox_regression", "classification"]
-    )
+    )  
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--cate', default="bus", help = "target test category")
+    parser.add_argument('--model_name', default="retina", help = "choose from fcos and retinanet.")
+    parser.add_argument('--coco_path', default='/data5/wenwens/coco2017/train2017', help = "path of COCO dataset")
+    parser.add_argument('--train_patch', action="store_true", help = "If yes, train; default, use provided patches.")
+    parser.add_argument('--visualize', action="store_true", help = "If yes, save detection results.")
+    args = parser.parse_args()
 
-    path2data = '/data5/wenwens/coco2017/train2017'
-    path2json = '../coco-manager/instances_'+cate+'_train2017.json'  # 
+    cate = args.cate # category name
+    train_patch = args.train_patch
+    load_size = 2000 if train_patch else 200
+    ratio = 0.9 if train_patch else 0.1
+    CLS=cate_list[cate]  # category label
+    cocoCLS=CLS
+    model_name = args.model_name
+
+    DIR_BASE = 'results/{}/cross_{}'.format(model_name, cate) 
+    path2data =  args.coco_path # path to coco dataset
+    path2json = 'category_json/instances_'+cate+'_train2017.json'  # filtered single category json
 
     # create own Dataset
     my_dataset = dsld.myOwnDataset(root=path2data,
@@ -249,7 +263,7 @@ def main():
     bases = load_normalized_bases()
 
     eps=0.5
-    attack = DPatch(
+    attack = AngelicPatch(
         ssd,
         frcnn,
         patch_shape=(16, 16, 3),
@@ -267,7 +281,7 @@ def main():
 
     # DataLoader is iterable over Dataset
     for idx, [imgs, annotations, _] in enumerate(data_loader):
-        if len(image) >=2000:    # if too much data, use first 4000
+        if len(image) >=load_size:    # if too much data, use first 4000
             break
         if idx % 1000 == 0:
             print(idx)
@@ -279,7 +293,6 @@ def main():
             continue
         
         pert_imgs = getattr(attack, "frost")(imgs, bases, severity=3)
-        # pert_imgs = pert_imgs.astype(np.float32)
 
         for i in range(imgs.shape[0]):
             # Process predictions
@@ -309,7 +322,6 @@ def main():
     print("generate")
     labels = {'boxes':gts_boxes, 'labels':gts_labels}
     # split dataset
-    ratio = 0.9
     trainSize = int(image.shape[0] * ratio)
     testSize = (image.shape[0] - trainSize)
     test_images = image[trainSize:,]
@@ -331,7 +343,7 @@ def main():
     
     DIR = DIR_BASE + str(eps)
     if not os.path.exists(DIR):
-        os.mkdir(DIR)
+        os.makedirs(DIR)
 
     print(eps)
     # original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
@@ -344,9 +356,10 @@ def main():
     #     origin_loss = get_loss(frcnn, copy.deepcopy(torch.Tensor(train_pert_images[j:j+1]).cuda()), copy.deepcopy(y_target))
     #     original_loss_history = append_loss_history(original_loss_history, origin_loss, train_pert_images.shape[0])
     # print("train pert image", original_loss_history)  # train pert image  
-
-    patch, acc_loss1, acc_loss2 = attack.generate_cross(x=image, target_label=CLS, labels=labels)
-    # patch = np.load("patches/cross/"+cate+"/patch_{}.npy".format(eps))
+    if args.train_patch:
+        patch, acc_loss1, acc_loss2 = attack.generate_cross(x=image, target_label=CLS, labels=labels)
+    else:
+        patch = np.load("patches/cross/"+cate+"/patch_{}.npy".format(eps))
     
     pert_data, patch_data = [], []    # prepare data for IoU json      
     plt.axis("off")
@@ -367,8 +380,9 @@ def main():
     frcnn._model.training = False
     origin_iou, patched_iou = 0, 0
     cnt = 0
-    for j in range(test_images.shape[0]):
-        print(j)
+
+    print("Warning, this test may be slow. Please be patient.")
+    for j in tqdm(range(test_images.shape[0])):
         y_target = dict()
         y_target['boxes'] = torch.from_numpy(test_labels['boxes'][j]).type(torch.float).cuda()
         y_target["labels"] = torch.from_numpy(test_labels['labels'][j]).cuda()
@@ -383,8 +397,9 @@ def main():
         try:
             predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(pert_predictions, name="Perturbed", cls=CLS)
             if count > 0:
-                # plot_image_with_boxes(img=np.ascontiguousarray(np.transpose(test_pert_images[j],(1,2,0)), dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j])
-                # plt.savefig(DIR+"/pert_test_image_{}.png".format(j))
+                if args.visualize:
+                    plot_image_with_boxes(img=np.ascontiguousarray(np.transpose(test_pert_images[j],(1,2,0)), dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
+                    plt.savefig(DIR+"/pert_test_image_{}.png".format(j))
                 new_boxes = copy.deepcopy(test_labels['boxes'][j])
                 iscrowd = torch.zeros(len(new_boxes))
                 predictions_boxes = np.reshape(np.array(predictions_boxes), (-1, 4))
@@ -410,8 +425,9 @@ def main():
         try:
             predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(patch_predictions, name="Patched", cls=CLS)                
             if count > 0:
-                # plot_image_with_boxes(img=np.ascontiguousarray(patched_images[0]), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j])
-                # plt.savefig(DIR+"/patched_test_image_{}.png".format(j))
+                if args.visualize:
+                    plot_image_with_boxes(img=np.ascontiguousarray(patched_images[0]), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
+                    plt.savefig(DIR+"/patched_test_image_{}.png".format(j))
                 new_boxes = copy.deepcopy(test_labels['boxes'][j])
                 iscrowd = torch.zeros(len(new_boxes))
                 predictions_boxes = np.reshape(np.array(predictions_boxes), (-1, 4))

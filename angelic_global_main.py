@@ -23,8 +23,8 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Batch size
 train_batch_size = 1
-im_length = 224
-model_name = "frcnn"
+im_length = 300
+model_name = "ssd"
 
 cate_list = {"person":1, "bus":6, "bottle": 44, "cup": 47, "bowl":51, "chair":62, "laptop":73}
 
@@ -248,7 +248,7 @@ def main():
     rand_place = args.randplace
     path2data = args.coco_path # path to coco dataset
     visualize = args.visualize
-    path2json = '../coco-manager/instances_'+cate+'_train2017.json' # filtered single category json
+    path2json = 'category_json/instances_'+cate+'_train2017.json' # filtered single category json
 
     if aware: 
         severity = 3
@@ -383,8 +383,8 @@ def main():
         plt.close()
     else:
         if aware:
-            # patch = np.load("patches/aware/{}/{}/patch_0.5.npy".format(model_name, cate))
-            patch = np.load("patches/cross/{}/patch_0.5.npy".format(cate))
+            patch = np.load("patches/aware/{}/{}/patch_0.5.npy".format(model_name, cate))
+            # patch = np.load("patches/cross/{}/patch_0.5.npy".format(cate))
         else:
             patch = np.load("patches/agnostic/{}_{}/patch_0.5.npy".format(model_name, cate))
 
