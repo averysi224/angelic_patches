@@ -234,6 +234,7 @@ def main():
     parser.add_argument('--partial', action="store_true", help = "If yes, apply patch on some of the objects.")
     parser.add_argument('--severity', default=1, help = "corruption level.")
     parser.add_argument('--randplace', action="store_true", help = "If yes, apply patch not in center.")
+    parser.add_argument('--visualize', action="store_true", help = "If yes, save detection results.")
     parser.add_argument('--coco_path', default='/data5/wenwens/coco2017/train2017', help = "path of COCO dataset")
     args = parser.parse_args()
     print(args)
@@ -256,7 +257,7 @@ def main():
     partial_test = args.partial
     rand_place = args.randplace
     path2data = args.coco_path # path to coco dataset
-    visualize = False
+    visualize = args.visualize
     path2json = '../coco-manager/instances_'+cate+'_train2017.json' # filtered single category json
 
     if aware: 
