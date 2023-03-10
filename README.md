@@ -21,15 +21,15 @@ In the affine robustness experiments, we need to extract the transformation para
 
 edit the return from 
 
-'''
+```
 return F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=self.center)
-'''
+```
 
 to 
 
-'''
+```
 return F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=self.center), ret
-'''
+```
 
 ## Example Testing
 We provide example patches for all baseline testing. Each run will compute high confident IoU automatically. Detections of patched and unpatched images are also saved. You can try different categories like "person", "bus", "bottle", "chair", "laptop" etc.
@@ -57,7 +57,7 @@ python examples/global_frcnn_final.py --cate "person" --coco_path your_COCO_path
 
 Test F-RCNN corruption-agnostic patch robustness under a series of corruption:
 ```
-python examples/global_frcnn_final.py --cate "person" --agnostic --coco_path your_COCO_path 
+python examples/global_frcnn_final.py --agnostic --cate "person"  --coco_path your_COCO_path 
 ```
 
 Test F-RCNN partially applied (only some of the objects are patched) corruption-aware patch robustness under frost corruption:
