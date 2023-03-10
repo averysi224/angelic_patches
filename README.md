@@ -5,6 +5,10 @@ For installation guidelines, please refer to README-original.md
 ## Installation
 This code is adapted from the adversarial-robustness-toolbox. The mai n contribution code of our paper are in 'art/attacks/evasion/dpatch.py', 'examples/global_frcnn_final.py' and 'python examples/test_frcnn_affine_final.py'.
 
+```
+git clone --depth 1 --branch 1.7.2 https://github.com/Trusted-AI/adversarial-robustness-toolbox.git
+```
+
 For environment requirements, please refer to README_original.md. We have also provide a conda environment file in the main folder.
 
 After satisfy the enviroment requirements, you could install the code with command line:
@@ -36,47 +40,50 @@ We provide example patches for all baseline testing. Each run will compute high 
 
 Test F-RCNN affine robustness under frost corruption:
 ```
-python examples/test_affine_final.py --cate bus --coco_path your_COCO_path
+python angelic_affine_main.py --cate bus --coco_path your_COCO_path
 ```
 
 Test F-RCNN affine robustness without corruption (clear):
 ```
-python examples/test_affine_final.py --cate bus --clear --coco_path your_COCO_path
+python angelic_affine_main.py --cate bus --clear --coco_path your_COCO_path
 ```
 
 Test F-RCNN corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate bus --coco_path your_COCO_path
+python angelic_global_main.py --cate bus --coco_path your_COCO_path
 ```
 
 
 Test F-RCNN corruption-aware patch robustness without corruption (clear):
 ```
-python examples/global_main.py --cate bus --coco_path your_COCO_path --clear
+python angelic_global_main.py --cate bus --coco_path your_COCO_path --clear
 ```
 
 Test F-RCNN corruption-agnostic patch robustness under a series of corruption:
 ```
-python examples/global_main.py --agnostic --cate bus  --coco_path your_COCO_path 
+python angelic_global_main.py --agnostic --cate bus  --coco_path your_COCO_path 
 ```
 
 Test F-RCNN partially applied (only some of the objects are patched) corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate bus --partial --coco_path your_COCO_path 
+python angelic_global_main.py --cate bus --partial --coco_path your_COCO_path 
 ```
 
 Test F-RCNN random placed (not in the center) corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate bus --coco_path your_COCO_path --randplace 
+python angelic_global_main.py --cate bus --coco_path your_COCO_path --randplace 
 ```
 
 ## Example Training
 Train F-RCNN corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate bus --coco_path your_COCO_path --train_patch 
+python angelic_global_main.py --cate bus --coco_path your_COCO_path --train_patch 
 ```
 
 Train F-RCNN corruption-agnostic patch robustness under frost corruption:
 ```
 python examples/global_main.py --cate bus --coco_path your_COCO_path --train_patch --agnostic
 ```
+
+## Example Cross Model Training
+
