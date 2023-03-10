@@ -65,7 +65,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 patch_length = 16
-im_length = 300
+im_length = 224
 
 # -*- coding: utf-8 -*-
 
@@ -277,6 +277,7 @@ class DPatch(EvasionAttack):
     def __init__(
         self,
         estimator: "OBJECT_DETECTOR_TYPE",
+        estimator2: "OBJECT_DETECTOR_TYPE" = None,
         patch_shape: Tuple[int, int, int] = (40, 40, 3),
         learning_rate: float = 5.0,
         max_iter: int = 500,
@@ -294,7 +295,7 @@ class DPatch(EvasionAttack):
         :param verbose: Show progress bars.
         """
         super().__init__(estimator=estimator)
-
+        self.estimator2 = estimator2
         self.patch_shape = patch_shape
         self.learning_rate = learning_rate
         self.max_iter = max_iter
@@ -393,6 +394,105 @@ class DPatch(EvasionAttack):
             acc_loss1.append(train_loss_final[0].cpu().numpy())
             acc_loss2.append(train_loss_final[1].cpu().numpy())
             print("regression_loss:", train_loss_final[0].item(), "classification_loss:", train_loss_final[1].item())
+        return patch.detach().cpu().numpy(), acc_loss1, acc_loss2
+
+
+    def generate_cross(  # pylint: disable=W0221
+        self,
+        x: np.ndarray,
+        y: Optional[np.ndarray] = None,
+        target_label: Optional[Union[int, List[int], np.ndarray]] = None,
+        **kwargs
+    ) -> np.ndarray:
+        """
+        Generate DPatch.
+
+        :param x: Sample images.
+        :param y: Target labels for object detector.
+        :param target_label: The target label of the DPatch attack.
+        :param mask: An boolean array of shape equal to the shape of a single samples (1, H, W) or the shape of `x`
+                     (N, H, W) without their channel dimensions. Any features for which the mask is True can be the
+                     center location of the patch during sampling.
+        :type mask: `np.ndarray`
+        :return: Adversarial patch.
+        """
+        patch_target: List[Dict[str, np.ndarray]] = list()
+
+        # predictions = self.estimator.predict(x=patched_images, standardise_output=True)
+        labels = kwargs.get("labels")
+        
+        # one image whole target
+        for i_image in range(x.shape[0]):
+            target_dict = {}
+            target_dict['boxes']=torch.Tensor(labels['boxes'][i_image]).cuda()
+            target_dict['scores']=torch.Tensor(1.0 * np.ones([len(labels['labels'][i_image])])).cuda()
+            target_dict['labels']=torch.Tensor(labels['labels'][i_image]).cuda().to(torch.int64)
+
+            patch_target.append(target_dict)
+
+        # initialize patch
+        patch = Variable((torch.ones(1, 3, 16, 16)*125), requires_grad=True).cuda()
+        x = torch.Tensor(x).cuda()
+        
+        acc_loss1, acc_loss2 = [], []
+        for i_step in range(self.max_iter):
+            num_batches = math.ceil(x.shape[0] / self.batch_size)
+            index = np.arange(num_batches)
+            np.random.shuffle(index)
+            if i_step % 1 == 0: #== self.max_iter - 1:
+                train_loss_final = [0, 0]
+                train_loss_final2 = [0, 0]
+
+            for i_batch in tqdm(index):
+                i_batch_start = i_batch * self.batch_size
+                i_batch_end = (i_batch + 1) * self.batch_size
+                batch_images = x[i_batch_start:i_batch_end]
+                batch_target = patch_target[i_batch_start]
+                batch_target_cuda = {}
+
+                batch_target_cuda['boxes']=batch_target['boxes']
+                batch_target_cuda['scores']=batch_target['scores']
+                batch_target_cuda['labels']=batch_target['labels']
+
+                patched_images, _ = random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
+                patched_images = self.frost(patched_images, bases, train=True, severity=3)
+                patched_images = patched_images.to(torch.float32) / 255. 
+                # should put image list inside, however as its single image, its the same
+                self.estimator._model.train()
+                loss = self.estimator._model(patched_images, [batch_target_cuda])
+                self.estimator2._model.train()
+                loss2 = self.estimator2._model(patched_images, [batch_target_cuda])
+                loss_sum = loss['bbox_regression'] + 0.1*loss['classification'] # ssd
+                loss_sum.retain_grad()
+                grad = torch.autograd.grad(loss_sum, patch, retain_graph=True)[0]
+                updated_patch = fgsm_attack(patch, self.learning_rate, grad)
+                loss_sum.grad.zero_()
+                self.estimator._model.zero_grad() 
+                grad.zero_()
+
+                # frcnn
+                loss_sum2 = loss2['loss_box_reg'] + loss2['loss_rpn_box_reg'] + 0.1* loss2['loss_classifier']
+                loss_sum2.retain_grad()
+                grad2 = torch.autograd.grad(loss_sum2, patch)[0]
+
+                updated_patch = fgsm_attack(updated_patch, self.learning_rate, grad2)
+
+                loss_sum2.grad.zero_()
+                self.estimator2._model.zero_grad() 
+                grad2.zero_()
+                patch = torch.clamp(updated_patch,0,255)
+
+                if i_step % 1 == 0:  # == self.max_iter - 1:
+                    train_loss_final[0] += loss['bbox_regression'].data / len(index)
+                    train_loss_final[1] += loss['classification'].data / len(index)
+
+                    train_loss_final2[0] += loss2['loss_box_reg'].data / len(index)
+                    train_loss_final2[1] += loss2['loss_classifier'].data / len(index)
+            
+            acc_loss1.append(train_loss_final[0].cpu().numpy())
+            acc_loss2.append(train_loss_final[1].cpu().numpy())
+            print("ssd, regression_loss:", train_loss_final[0].item(), "classification_loss:", train_loss_final[1].item())
+            print("frcnn, regression_loss:", train_loss_final2[0].item(), "classification_loss:", train_loss_final2[1].item())
         return patch.detach().cpu().numpy(), acc_loss1, acc_loss2
 
     def gaussian_noise(self, x, severity=1):

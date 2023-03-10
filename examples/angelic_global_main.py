@@ -33,8 +33,8 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Batch size
 train_batch_size = 1
-im_length = 300
-model_name = "ssd"
+im_length = 224
+model_name = "frcnn"
 
 cate_list = {"person":1, "bus":6, "bottle": 44, "cup": 47, "bowl":51, "chair":62, "laptop":73}
 
@@ -227,7 +227,7 @@ def append_loss_history(loss_history, output, num):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('--cate', default="person", help = "target test category")
+    parser.add_argument('--cate', default="bus", help = "target test category")
     parser.add_argument('--clear', action="store_true", help = "test without corruption, default with corruption.")
     parser.add_argument('--agnostic', action="store_true", help = "corruption-agnostic patch, default aware.")
     parser.add_argument('--train_patch', action="store_true", help = "If yes, train; default, use provided patches.")
@@ -393,7 +393,8 @@ def main():
         plt.close()
     else:
         if aware:
-            patch = np.load("patches/aware/{}/{}/patch_0.5.npy".format(model_name, cate))
+            # patch = np.load("patches/aware/{}/{}/patch_0.5.npy".format(model_name, cate))
+            patch = np.load("patches/cross/{}/patch_0.5.npy".format(cate))
         else:
             patch = np.load("patches/agnostic/{}_{}/patch_0.5.npy".format(model_name, cate))
 
@@ -465,6 +466,7 @@ def main():
 
             cnt += len(test_labels['boxes'][j])
             # actual input (40, 3, 224, 224)
+            pdb.set_trace()
             patched_images, rand_n = attack.apply_multi_patch(torch.Tensor(test_images[j:j+1]).cuda(), 
                                                     patch_external=torch.Tensor(patch).cuda(), 
                                                     gts_boxes=torch.Tensor(test_gts_boxes[j]).cuda(), 

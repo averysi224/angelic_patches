@@ -204,16 +204,17 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cate', default="person", help = "target test category")
     parser.add_argument('--clear', action="store_true", help = "test without corruption, default with corruption.")
+    parser.add_argument('--model_name', default="frcnn", help = "choose from frcnn and ssd.")
     parser.add_argument('--coco_path', default='/data5/wenwens/coco2017/train2017', help = "path of COCO dataset")
     args = parser.parse_args()
 
     cate = args.cate # category name
     test_clear = args.clear
     CLS=cate_list[cate]  # category label
-    model_name = "ssd"
+    model_name = args.model_name
 
     DIR_BASE = 'results/{}/affine_{}'.format(model_name, cate) 
-    im_length = 300
+    im_length = 224 if model_name == "frcnn" else 300
     path2data =  args.coco_path # path to coco dataset
     path2json = '../coco-manager/instances_'+cate+'_train2017.json'  # filtered single category json
 

@@ -36,47 +36,47 @@ We provide example patches for all baseline testing. Each run will compute high 
 
 Test F-RCNN affine robustness under frost corruption:
 ```
-python examples/test_affine_final.py --cate "person" --coco_path your_COCO_path
+python examples/test_affine_final.py --cate bus --coco_path your_COCO_path
 ```
 
 Test F-RCNN affine robustness without corruption (clear):
 ```
-python examples/test_affine_final.py --cate "person" --clear --coco_path your_COCO_path
+python examples/test_affine_final.py --cate bus --clear --coco_path your_COCO_path
 ```
 
 Test F-RCNN corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate "person" --coco_path your_COCO_path
+python examples/global_main.py --cate bus --coco_path your_COCO_path
 ```
 
 
 Test F-RCNN corruption-aware patch robustness without corruption (clear):
 ```
-python examples/global_main.py --cate "person" --coco_path your_COCO_path --clear
+python examples/global_main.py --cate bus --coco_path your_COCO_path --clear
 ```
 
 Test F-RCNN corruption-agnostic patch robustness under a series of corruption:
 ```
-python examples/global_main.py --agnostic --cate "person"  --coco_path your_COCO_path 
+python examples/global_main.py --agnostic --cate bus  --coco_path your_COCO_path 
 ```
 
 Test F-RCNN partially applied (only some of the objects are patched) corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate "person" --partial --coco_path your_COCO_path 
+python examples/global_main.py --cate bus --partial --coco_path your_COCO_path 
 ```
 
 Test F-RCNN random placed (not in the center) corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate "person" --coco_path your_COCO_path --randplace 
+python examples/global_main.py --cate bus --coco_path your_COCO_path --randplace 
 ```
 
 ## Example Training
 Train F-RCNN corruption-aware patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate "person" --coco_path your_COCO_path --train_patch 
+python examples/global_main.py --cate bus --coco_path your_COCO_path --train_patch 
 ```
 
 Train F-RCNN corruption-agnostic patch robustness under frost corruption:
 ```
-python examples/global_main.py --cate "person" --coco_path your_COCO_path --train_patch --agnostic
+python examples/global_main.py --cate bus --coco_path your_COCO_path --train_patch --agnostic
 ```
