@@ -14,7 +14,7 @@ import os
 import json
 import copy
 
-import dsld, dsssd
+import dsld
 from wand.image import Image as WandImage
 from wand.api import library as wandlibrary
 import wand.color as WandColor
@@ -241,7 +241,13 @@ def main():
     cate = args.cate # category name
     test_clear = args.clear
     CLS=cate_list[cate]  # category label
-    DIR_BASE='global_{}_{}'.format(model_name, cate) 
+
+    suffix = "agnostic" if args.agnostic else "aware"
+    suffix += "_clear" if args.clear else "_corrupt"
+    suffix += "_partial" if args.clear else ""
+    suffix += "_randplace" if args.clear else ""
+
+    DIR_BASE='results/{}/{}_{}'.format(model_name, cate, suffix) 
     aware = not args.agnostic
     train_patch = args.train_patch
     severity = args.severity
@@ -250,6 +256,7 @@ def main():
     partial_test = args.partial
     rand_place = args.randplace
     path2data = args.coco_path # path to coco dataset
+    visualize = False
     path2json = '../coco-manager/instances_'+cate+'_train2017.json' # filtered single category json
 
     if aware: 
@@ -260,10 +267,6 @@ def main():
             clip_values=(0, 255), attack_losses=["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]
         )
         # create own Dataset
-        my_dataset = dsld.myOwnDataset(root=path2data,
-                            annotation=path2json,
-                            transforms=dsld.get_transform()
-                            )
         original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
     else:
         model = torchvision.models.detection.ssd300_vgg16(pretrained=True)
@@ -271,11 +274,9 @@ def main():
         mdl = PyTorchSSD(
             clip_values=(0, 255), model=model, attack_losses=["bbox_regression", "classification"]
         )
-        my_dataset = dsssd.SSDDataset(root=path2data,
-                            annotation=path2json,
-                            transforms=dsssd.get_transform()
-                            )
         original_loss_history = {"bbox_regression": 0, "classification": 0}
+
+    my_dataset = dsld.myOwnDataset(root=path2data, annotation=path2json, im_length=im_length)
 
     # collate_fn needs for batch
     def collate_fn(batch):
@@ -448,8 +449,9 @@ def main():
                 # for plot, 0.5 threshold        
                 predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(pert_predictions[0], name="Perturbed", cls=CLS)
                 if count > 0:
-                    plot_image_with_boxes(img=np.ascontiguousarray(x_tmp[0], dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
-                    plt.savefig(DIR+"/" + crr + "_pert_test_image_{}.png".format(j))
+                    if visualize:
+                        plot_image_with_boxes(img=np.ascontiguousarray(x_tmp[0], dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
+                        plt.savefig(DIR+"/" + crr + "_pert_test_image_{}.png".format(j))
                     new_boxes = copy.deepcopy(test_labels['boxes'][j])
                     iscrowd = torch.zeros(len(new_boxes))
                     predictions_boxes = np.reshape(np.array(predictions_boxes), (-1, 4))
@@ -491,8 +493,9 @@ def main():
                         patch_data.append(res)
                 predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(patch_predictions[0], name="Patched", cls=CLS)
                 if count > 0:
-                    plot_image_with_boxes(img=np.ascontiguousarray(patched_images[0], dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
-                    plt.savefig(DIR+"/" + crr + "_patched_test_image_{}.png".format(j))
+                    if visualize:
+                        plot_image_with_boxes(img=np.ascontiguousarray(patched_images[0], dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
+                        plt.savefig(DIR+"/" + crr + "_patched_test_image_{}.png".format(j))
                     new_boxes = copy.deepcopy(test_labels['boxes'][j])
                     iscrowd = torch.zeros(len(new_boxes))
                     predictions_boxes = np.reshape(np.array(predictions_boxes), (-1, 4))
