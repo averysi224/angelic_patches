@@ -24,12 +24,13 @@ def is_greyscale(im):
     return True
 
 class myOwnDataset(torch.utils.data.Dataset):
-    def __init__(self, root, annotation, transforms=None):
+    def __init__(self, root, annotation, im_length):
         self.root = root
-        self.transforms = transforms
+        self.im_length = im_length
+        self.transforms = self.get_transform()
         self.coco = COCO(annotation)
         self.ids = list(sorted(self.coco.imgs.keys()))
-        self.mask_transforms = get_mask_transform()
+        self.mask_transforms = self.get_mask_transform()
 
     def __getitem__(self, index):
         # Own coco file
@@ -68,10 +69,10 @@ class myOwnDataset(torch.utils.data.Dataset):
             xmax = xmin + coco_annotation[i]['bbox'][2]
             ymax = ymin + coco_annotation[i]['bbox'][3]
             
-            normalized_x = int(xmin * 224 / width)
-            normalized_y = int(ymin * 224 / height)
-            normalized_width = int((xmax - xmin) * 224 / width)
-            normalized_height = int((ymax - ymin) * 224 / height)
+            normalized_x = int(xmin * self.im_length / width)
+            normalized_y = int(ymin * self.im_length / height)
+            normalized_width = int((xmax - xmin) * self.im_length / width)
+            normalized_height = int((ymax - ymin) * self.im_length / height)
             boxes.append([normalized_x, 
                           normalized_y, 
                           normalized_x+normalized_width, 
@@ -112,19 +113,19 @@ class myOwnDataset(torch.utils.data.Dataset):
     def __len__(self):
         return len(self.ids)
 
-# In my case, just added ToTensor
-def get_transform():
-    custom_transforms = []
-    custom_transforms.append(torchvision.transforms.Resize([224, 224]))
-    custom_transforms.append(torchvision.transforms.ToTensor())
+    # In my case, just added ToTensor
+    def get_transform(self):
+        custom_transforms = []
+        custom_transforms.append(torchvision.transforms.Resize([self.im_length, self.im_length]))
+        custom_transforms.append(torchvision.transforms.ToTensor())
 
-    return torchvision.transforms.Compose(custom_transforms)
+        return torchvision.transforms.Compose(custom_transforms)
 
 
-def get_mask_transform():
-    custom_transforms = []
-    custom_transforms.append(torchvision.transforms.ToPILImage())
-    custom_transforms.append(torchvision.transforms.Resize([224, 224]))
-    custom_transforms.append(torchvision.transforms.ToTensor())
+    def get_mask_transform(self):
+        custom_transforms = []
+        custom_transforms.append(torchvision.transforms.ToPILImage())
+        custom_transforms.append(torchvision.transforms.Resize([self.im_length, self.im_length]))
+        custom_transforms.append(torchvision.transforms.ToTensor())
 
-    return torchvision.transforms.Compose(custom_transforms)
+        return torchvision.transforms.Compose(custom_transforms)
