@@ -1,9 +1,11 @@
 import torch
+import torchvision
 import cv2
 import numpy as np
 import matplotlib.pyplot as plt
 
 from art.estimators.object_detection import PyTorchFasterRCNN
+from art.estimators.object_detection import PyTorchSSD
 from art.attacks.evasion import DPatch
 from pycocotools import mask as maskUtils
 
@@ -12,7 +14,7 @@ import os
 import json
 import copy
 
-import dsld
+import dsld, dsssd
 from wand.image import Image as WandImage
 from wand.api import library as wandlibrary
 import wand.color as WandColor
@@ -26,14 +28,15 @@ import argparse
 import os
 from pkg_resources import resource_filename
 
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+os.environ["CUDA_VISIBLE_DEVICES"]="1"
 torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Batch size
 train_batch_size = 1
-im_length = 224
+im_length = 300
+model_name = "ssd"
 
-cate_list = {"person":1, "bus":6, "bottle": 44, "bowl":51, "chair":62, "laptop":73}
+cate_list = {"person":1, "bus":6, "bottle": 44, "cup": 47, "bowl":51, "chair":62, "laptop":73}
 
 COCO_INSTANCE_CATEGORY_NAMES = [
     "__background__",
@@ -195,7 +198,7 @@ def plot_image_with_boxes(img, boxes, pred_cls, cls, gt_boxes=None):
     plt.imshow(img.astype(np.uint8), interpolation="nearest")
     
 def load_normalized_bases():
-    images = os.listdir('frost');
+    images = os.listdir('frost')
     frost_bases = []
     for im in images:
         image = cv2.imread('frost/' + im)[..., [2, 1, 0]]
@@ -203,30 +206,24 @@ def load_normalized_bases():
         frost_bases.append(image)
     return frost_bases
 
-def get_loss(frcnn, x, y):
-    frcnn._model.train()
+def get_loss(mdl, x, y):
+    mdl._model.train()
     image_tensor_list = list()
     for i in range(x.shape[0]):
-        if frcnn.clip_values is not None:
-            img = x[i] / frcnn.clip_values[1]
+        if mdl.clip_values is not None:
+            img = x[i] / mdl.clip_values[1]
         else:
             img = x[i]
         image_tensor_list.append(img)
-    loss = frcnn._model(image_tensor_list, [y])
-    for loss_type in ["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]:
+    loss = mdl._model(image_tensor_list, [y])
+    for loss_type in mdl.attack_losses:
         loss[loss_type] = loss[loss_type].cpu().detach().numpy().item()
     return loss
 
 def append_loss_history(loss_history, output, num):
-    for loss in ["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]:
+    for loss in loss_history.keys():
         loss_history[loss] += output[loss] / num
     return loss_history
-
-def init_loss_history(num=1):
-    loss = dict()
-    for loss_type in ["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]:
-        loss[loss_type] = num
-    return loss
 
 def main():
     parser = argparse.ArgumentParser()
@@ -244,30 +241,41 @@ def main():
     cate = args.cate # category name
     test_clear = args.clear
     CLS=cate_list[cate]  # category label
-    DIR_BASE='global_frcnn_' + cate 
+    DIR_BASE='global_{}_{}'.format(model_name, cate) 
     aware = not args.agnostic
     train_patch = args.train_patch
     severity = args.severity
-    load_size = 2000 if train_patch else 100
+    load_size = 2000 if train_patch else 400
     ratio = 0.9 if train_patch else 0.1
     partial_test = args.partial
     rand_place = args.randplace
+    path2data = args.coco_path # path to coco dataset
+    path2json = '../coco-manager/instances_'+cate+'_train2017.json' # filtered single category json
 
     if aware: 
         severity = 3
 
-    ssd = PyTorchFasterRCNN(
-        clip_values=(0, 255), attack_losses=["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]
-    )
-
-    path2data = args.coco_path # path to coco dataset
-    path2json = 'category_json/instances_'+cate+'_train2017.json' # filtered single category json
-
-    # create own Dataset
-    my_dataset = dsld.myOwnDataset(root=path2data,
+    if model_name == "frcnn":
+        mdl = PyTorchFasterRCNN(
+            clip_values=(0, 255), attack_losses=["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]
+        )
+        # create own Dataset
+        my_dataset = dsld.myOwnDataset(root=path2data,
                             annotation=path2json,
                             transforms=dsld.get_transform()
                             )
+        original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
+    else:
+        model = torchvision.models.detection.ssd300_vgg16(pretrained=True)
+        model.eval()
+        mdl = PyTorchSSD(
+            clip_values=(0, 255), model=model, attack_losses=["bbox_regression", "classification"]
+        )
+        my_dataset = dsssd.SSDDataset(root=path2data,
+                            annotation=path2json,
+                            transforms=dsssd.get_transform()
+                            )
+        original_loss_history = {"bbox_regression": 0, "classification": 0}
 
     # collate_fn needs for batch
     def collate_fn(batch):
@@ -292,7 +300,7 @@ def main():
     for idx, [imgs, annotations, _] in enumerate(data_loader):
         if len(image) >=load_size:    # if too much data, use first 4000
             break
-        if len(image) % 1000 == 0:
+        if idx % 1000 == 0:
             print(idx)
         
         imgs = torch.stack(imgs)
@@ -343,11 +351,13 @@ def main():
     
     eps = 0.5
     DIR = DIR_BASE + str(eps)
+
+    print("Results will be save in", DIR)
     if not os.path.exists(DIR):
-        os.mkdir(DIR)
+        os.makedirs(DIR)
 
     attack = DPatch(
-        ssd,
+        mdl,
         patch_shape=(16, 16, 3),
         learning_rate=eps,
         max_iter=12,
@@ -357,7 +367,6 @@ def main():
 
     if train_patch:
         print("eps =", eps)
-        original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
         for j in range(image.shape[0]):
             y_target = dict()
             y_target['boxes'] = torch.from_numpy(train_labels['boxes'][j]).type(torch.float).cuda()
@@ -369,11 +378,11 @@ def main():
                 train_pert_image = np.transpose(train_pert_image, [0,3,1,2])
             else:
                 train_pert_image = image[j:j+1]
-            origin_loss = get_loss(ssd, copy.deepcopy(torch.Tensor(train_pert_image).cuda()), copy.deepcopy(y_target))
+            origin_loss = get_loss(mdl, copy.deepcopy(torch.Tensor(train_pert_image).cuda()), copy.deepcopy(y_target))
             original_loss_history = append_loss_history(original_loss_history, origin_loss, image.shape[0])
         prefix = "train pert image loss: " if aware else "train clear image loss: "
         print(prefix, original_loss_history)  # train pert image  
-        patch, acc_loss1, acc_loss2 = attack.generate(x=image, target_label=CLS, labels=labels, aware=aware)
+        patch, acc_loss1, acc_loss2 = attack.generate(x=image, target_label=CLS, labels=labels, aware=aware, model_name=model_name)
         plt.axis("off")
         plt.title("Adversarial Patch")
         plt.imshow(np.transpose(patch,(0,2,3,1))[0].astype(np.uint8), interpolation="nearest")
@@ -382,16 +391,16 @@ def main():
         plt.close()
     else:
         if aware:
-            patch = np.load("patches/aware/frcnn/" + cate + '/patch_0.5.npy')
+            patch = np.load("patches/aware/{}/{}/patch_0.5.npy".format(model_name, cate))
         else:
-            patch = np.load("patches/agnostic/frcnn_"+cate + '/patch_0.5.npy')
+            patch = np.load("patches/agnostic/{}_{}/patch_0.5.npy".format(model_name, cate))
 
-    ssd._model.training = False
+    mdl._model.training = False
 
     pert_data, patch_data = [], []    # prepare data for IoU json 
     original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
     
-    ssd._model.training = False
+    mdl._model.training = False
     for c1 in range(len(attack.cdict)):
         crr=attack.cdict[c1]
         if aware and c1 > 0: 
@@ -418,7 +427,11 @@ def main():
                     # actual input (224, 224, 3, 1)
                     x_tmp = getattr(attack, crr)(np.transpose(copy.deepcopy(test_images[j:j+1]), (0,2,3,1)), bases, severity=severity).astype(np.float32)
                     # output (1, 224, 224, 3)
-            pert_predictions = ssd.predict(x=x_tmp)
+            if model_name == "frcnn":
+                pert_predictions = mdl.predict(x=x_tmp)
+            else:
+                pert_predictions = mdl.predict(x=np.transpose(x_tmp, (0,3,1,2))/255.)
+            
             # for json, 0 threshold
             try:
                 predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(pert_predictions[0], name="Perturbed", cls=CLS, thresh=0.0)
@@ -459,7 +472,11 @@ def main():
                                                     rp=rand_place)
             patched_images = patched_images.astype(np.float32)
             patched_cnt += rand_n
-            patch_predictions = ssd.predict(patched_images)
+            if model_name == "frcnn":
+                patch_predictions = mdl.predict(patched_images)
+            else:
+                patch_predictions = mdl.predict(np.transpose(patched_images.astype(np.float32), (0,3,1,2))/255.)
+            
             try:
                 predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(patch_predictions[0], name="Patched", cls=CLS, thresh=0.0)
                 if count > 0:
