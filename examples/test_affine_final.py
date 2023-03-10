@@ -6,6 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from art.estimators.object_detection import PyTorchFasterRCNN
+from art.estimators.object_detection import PyTorchSSD
 from art.attacks.evasion import ProjectedGradientDescent
 from art.attacks.evasion import DPatch
 from pycocotools import mask as maskUtils
@@ -209,21 +210,28 @@ def main():
     cate = args.cate # category name
     test_clear = args.clear
     CLS=cate_list[cate]  # category label
-    DIR_BASE='affine_' + cate 
+    model_name = "ssd"
 
-    ssd = PyTorchFasterRCNN(
-        clip_values=(0, 255), attack_losses=["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]
-    )
-
+    DIR_BASE = 'results/{}/affine_{}'.format(model_name, cate) 
+    im_length = 300
     path2data =  args.coco_path # path to coco dataset
-    path2json = 'category_json/instances_'+cate+'_train2017.json'  # filtered single category json
+    path2json = '../coco-manager/instances_'+cate+'_train2017.json'  # filtered single category json
 
-    # create own Dataset
-    my_dataset = dsld.myOwnDataset(root=path2data,
-                            annotation=path2json,
-                            transforms=dsld.get_transform()
-                            )
+    if model_name == "frcnn":
+        mdl = PyTorchFasterRCNN(
+            clip_values=(0, 255), attack_losses=["loss_classifier", "loss_box_reg", "loss_objectness", "loss_rpn_box_reg"]
+        )
+        # create own Dataset
+        original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
+    else:
+        model = torchvision.models.detection.ssd300_vgg16(pretrained=True)
+        model.eval()
+        mdl = PyTorchSSD(
+            clip_values=(0, 255), model=model, attack_losses=["bbox_regression", "classification"]
+        )
+        original_loss_history = {"bbox_regression": 0, "classification": 0}
 
+    my_dataset = dsld.myOwnDataset(root=path2data, annotation=path2json, im_length=im_length)
     # collate_fn needs for batch
     def collate_fn(batch):
         return tuple(zip(*batch))
@@ -302,10 +310,10 @@ def main():
 
     DIR = DIR_BASE
     if not os.path.exists(DIR):
-        os.mkdir(DIR)
+        os.makedirs(DIR)
 
     attack = DPatch(
-        ssd,
+        mdl,
         patch_shape=(16, 16, 3),
         learning_rate=eps,
         max_iter=12,
@@ -314,7 +322,7 @@ def main():
     )
 
     patch = np.load("patches/aware/frcnn/"+cate+"/patch_{}.npy".format(eps))
-    ssd._model.training = False
+    mdl._model.training = False
 
     train_pert_images = image 
     test_pert_images = test_images
@@ -322,7 +330,7 @@ def main():
     test_pert_images = np.transpose(test_pert_images, (0,3,1,2))
     train_pert_images = np.transpose(train_pert_images, (0,3,1,2))
 
-    ssd._model.training = False
+    mdl._model.training = False
     origin_iou, patched_iou = 0, 0
     
     cnt = 0
@@ -338,7 +346,10 @@ def main():
                                                         corrupt_type=5, 
                                                         masks=test_masks[j],
                                                         clear=test_clear)
-        pert_predictions = ssd.predict(pert_images)
+        if model_name == "frcnn":
+            pert_predictions = mdl.predict(x=pert_images)
+        else:
+            pert_predictions = mdl.predict(x=np.transpose(pert_images, (0,3,1,2))/255.)
         # for json, 0 threshold
         try:
             # for plot, 0.5 threshold        
@@ -362,7 +373,10 @@ def main():
                                                                                     gts_boxes=torch.Tensor(test_gts_boxes[j]).cuda(), 
                                                                                     masks=test_masks[j],
                                                                                     clear=test_clear)
-        patch_predictions = ssd.predict(patched_images)
+        if model_name == "frcnn":
+            patch_predictions = mdl.predict(patched_images)
+        else:
+            patch_predictions = mdl.predict(np.transpose(patched_images.astype(np.float32), (0,3,1,2))/255.)
         # for ii in range(len(transferred_masks)):
         #     plt.imshow(transferred_masks[ii].T)
         #     plt.savefig("affine_frcnn/masks{}_{}.png".format(j, ii))
