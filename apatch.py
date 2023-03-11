@@ -793,7 +793,7 @@ class AngelicPatch(EvasionAttack):
         :return: The patched images.
         """
         # torch.Size([1, 3, 224, 224])
-        patched_images, rand_n = random_patch_image(copy.deepcopy(x), 
+        patched_images, rand_n = self.random_patch_image(copy.deepcopy(x), 
                                             copy.deepcopy(patch_external), 
                                             gts_boxes, 
                                             randplace=rp,
