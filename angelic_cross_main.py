@@ -23,7 +23,7 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Batch size
 train_batch_size = 1
-cate_list = {"person":1, "bus":6, "bottle": 44, "bowl":51, "chair":62, "laptop":73}
+cate_list = {"person":1, "bus":6, "bottle": 44, "cup": 47, "bowl":51, "chair":62, "laptop":73}
 
 COCO_INSTANCE_CATEGORY_NAMES = [
     "__background__",
@@ -271,6 +271,7 @@ def main():
         max_iter=12,
         batch_size=1,
         verbose=False,
+        im_length=224,
     )
 
     image = []
@@ -442,12 +443,6 @@ def main():
     
     print(cate)
     print(origin_iou/cnt, ",", patched_iou/cnt)
-    
-    with open(DIR+"/pert_res.json", "w") as out_file:
-        out_file.write(json.dumps(pert_data, cls=NumpyEncoder))
-    with open(DIR+"/patch_res.json", "w") as out_file:
-        out_file.write(json.dumps(patch_data, cls=NumpyEncoder))
-    
 
 if __name__ == "__main__":
     main()

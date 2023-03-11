@@ -18,10 +18,9 @@ import cv2
 os.environ["CUDA_VISIBLE_DEVICES"]="1"
 torch.multiprocessing.set_sharing_strategy('file_system')
 
-cate_list = {"person":1, "bus":6, "bottle": 44, "bowl":51, "chair":62, "laptop":73}
+cate_list = {"person":1, "bus":6, "bottle": 44, "cup": 47, "bowl":51, "chair":62, "laptop":73}
 # Batch size
 train_batch_size = 1
-length = 224
 
 COCO_INSTANCE_CATEGORY_NAMES = [
     "__background__",
@@ -301,6 +300,7 @@ def main():
         max_iter=12,
         batch_size=1,
         verbose=False,
+        im_length=im_length,
     )
 
     patch = np.load("patches/aware/frcnn/"+cate+"/patch_{}.npy".format(eps))

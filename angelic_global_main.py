@@ -23,8 +23,6 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 
 # Batch size
 train_batch_size = 1
-im_length = 300
-model_name = "ssd"
 
 cate_list = {"person":1, "bus":6, "bottle": 44, "cup": 47, "bowl":51, "chair":62, "laptop":73}
 
@@ -218,11 +216,12 @@ def append_loss_history(loss_history, output, num):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--cate', default="bus", help = "target test category")
+    parser.add_argument('--model_name', default="frcnn", help = "test model, frcnn or ssd")
+    parser.add_argument('--severity', default=1, help = "corruption level.")
     parser.add_argument('--clear', action="store_true", help = "test without corruption, default with corruption.")
     parser.add_argument('--agnostic', action="store_true", help = "corruption-agnostic patch, default aware.")
     parser.add_argument('--train_patch', action="store_true", help = "If yes, train; default, use provided patches.")
     parser.add_argument('--partial', action="store_true", help = "If yes, apply patch on some of the objects.")
-    parser.add_argument('--severity', default=1, help = "corruption level.")
     parser.add_argument('--randplace', action="store_true", help = "If yes, apply patch not in center.")
     parser.add_argument('--visualize', action="store_true", help = "If yes, save detection results.")
     parser.add_argument('--coco_path', default='/data5/wenwens/coco2017/train2017', help = "path of COCO dataset")
@@ -232,6 +231,8 @@ def main():
     cate = args.cate # category name
     test_clear = args.clear
     CLS=cate_list[cate]  # category label
+    model_name = args.model_name
+    im_length = 224 if model_name == "frcnn" else 300
 
     suffix = "agnostic" if args.agnostic else "aware"
     suffix += "_clear" if args.clear else "_corrupt"
@@ -355,6 +356,7 @@ def main():
         max_iter=12,
         batch_size=1,
         verbose=False,
+        im_length=im_length,
     )
 
     if train_patch:

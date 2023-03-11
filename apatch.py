@@ -62,9 +62,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-patch_length = 16
-im_length = 224
-
 # -*- coding: utf-8 -*-
 
 warnings.simplefilter("ignore", UserWarning)
@@ -167,64 +164,8 @@ def load_normalized_bases():
 
 bases = load_normalized_bases()
 
-def center_box_position(bbox, mask_length):
-    # converted bbox, start points end points
-    bbox = bbox.cpu().numpy().astype(int)
-    x00 = max((bbox[2]+bbox[0] - mask_length)//2, 0)
-    y00 = max((bbox[3]+bbox[1] - mask_length)//2, 0)
-
-    x0 = min(x00, im_length-mask_length)
-    y0 = min(y00, im_length-mask_length)
-    return (y0, y0 + mask_length, x0, x0 + mask_length)
-
-def random_box_position(bbox, mask_length):
-    # converted bbox, start points end points
-    bbox = bbox.cpu().numpy().astype(int)
-    x00 = max((bbox[2]+bbox[0] - mask_length)//2, 0)
-    y00 = max((bbox[3]+bbox[1] - mask_length)//2, 0)
-
-    bias_x = np.random.randint(x00 - bbox[0])
-    sign = np.random.randint(1)
-    x00 += int(bias_x * 2 * (sign - 0.5))
-    bias_y = np.random.randint(y00 - bbox[1])
-    sign = np.random.randint(1)
-    y00 += int(bias_y * 2 * (sign - 0.5))
-
-    x0 = min(x00, im_length-mask_length)
-    y0 = min(y00, im_length-mask_length)
-    return (y0, y0 + mask_length, x0, x0 + mask_length)
-
-def random_patch_image(img, patch, bboxs, partial=False, randplace=False):
-    if partial:
-        rand_n = max(np.random.randint(bboxs.shape[0]), 1)
-        add_ns = np.random.choice(bboxs.shape[0], rand_n, replace=False)
-    else:
-        rand_n = bboxs.shape[0]
-        add_ns = range(bboxs.shape[0])
-    for i in add_ns:
-        box_width = bboxs[i,2]-bboxs[i,0] 
-        box_height = bboxs[i,3]-bboxs[i,1]
-        height, width = patch.shape[2], patch.shape[3]
-        n = np.random.randint(0, 3)
-        ratio = min(0.5 * min(box_width, box_height)/width, 5)  # bounded
-        patch1 = rot_img(patch, np.pi/2, dtype=torch.cuda.FloatTensor)
-        m = nn.UpsamplingBilinear2d(scale_factor=ratio)
-        patch1 = m(patch1)
-        rl = patch1.shape[-1]
-        if randplace:
-            coors = random_box_position(bboxs[i], rl) 
-        else:
-            coors = center_box_position(bboxs[i], rl) 
-        img[:,:,coors[0]:coors[1], coors[2]:coors[3]] = patch1
-    return img, rand_n
-
 def fgsm_attack(patch, epsilon, data_grad):
     updated_patch = patch - epsilon * torch.sign(data_grad) #/255.
-    updated_patch = torch.clamp(updated_patch, 0, 255)
-    return updated_patch
-
-def grad_descent(patch, epsilon, data_grad):
-    updated_patch = patch - 1.0 * data_grad
     updated_patch = torch.clamp(updated_patch, 0, 255)
     return updated_patch
 
@@ -266,6 +207,7 @@ class AngelicPatch(EvasionAttack):
         max_iter: int = 500,
         batch_size: int = 16,
         verbose: bool = True,
+        im_length: int = 224,
     ):
         """
         Create an instance of the :class:`.DPatch`.
@@ -284,6 +226,7 @@ class AngelicPatch(EvasionAttack):
         self.max_iter = max_iter
         self.batch_size = batch_size
         self.verbose = verbose
+        self.im_length = im_length
         self.cdict = ["frost", "brightness", "fog", "gaussian_noise", "shot_noise", "impulse_noise", 
                         "speckle_noise", "defocus_blur", "motion_blur", "zoom_blur", "snow", "jpeg_compression", 
                         "pixelate", "contrast", "glass_blur", "spatter"]
@@ -347,7 +290,7 @@ class AngelicPatch(EvasionAttack):
                 batch_target_cuda['scores']=torch.Tensor(batch_target['scores']).cuda()
                 batch_target_cuda['labels']=torch.Tensor(batch_target['labels']).cuda().to(torch.int64)
 
-                patched_images, _ = random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
+                patched_images, _ = self.random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
                 if aware:
                     # corruption-aware level 3 training
                     patched_images = self.frost(patched_images, bases, train=aware, severity=3)
@@ -437,7 +380,7 @@ class AngelicPatch(EvasionAttack):
                 batch_target_cuda['scores']=batch_target['scores']
                 batch_target_cuda['labels']=batch_target['labels']
 
-                patched_images, _ = random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
+                patched_images, _ = self.random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
                 patched_images = self.frost(patched_images, bases, train=True, severity=3)
                 patched_images = patched_images.to(torch.float32) / 255. 
                 # should put image list inside, however as its single image, its the same
@@ -478,6 +421,57 @@ class AngelicPatch(EvasionAttack):
             print("frcnn, regression_loss:", train_loss_final2[0].item(), "classification_loss:", train_loss_final2[1].item())
         return patch.detach().cpu().numpy(), acc_loss1, acc_loss2
 
+    def center_box_position(self, bbox, mask_length):
+        # converted bbox, start points end points
+        bbox = bbox.cpu().numpy().astype(int)
+        x00 = max((bbox[2]+bbox[0] - mask_length)//2, 0)
+        y00 = max((bbox[3]+bbox[1] - mask_length)//2, 0)
+
+        x0 = min(x00, self.im_length-mask_length)
+        y0 = min(y00, self.im_length-mask_length)
+        return (y0, y0 + mask_length, x0, x0 + mask_length)
+
+    def random_box_position(self, bbox, mask_length):
+        # converted bbox, start points end points
+        bbox = bbox.cpu().numpy().astype(int)
+        x00 = max((bbox[2]+bbox[0] - mask_length)//2, 0)
+        y00 = max((bbox[3]+bbox[1] - mask_length)//2, 0)
+
+        bias_x = np.random.randint(x00 - bbox[0])
+        sign = np.random.randint(1)
+        x00 += int(bias_x * 2 * (sign - 0.5))
+        bias_y = np.random.randint(y00 - bbox[1])
+        sign = np.random.randint(1)
+        y00 += int(bias_y * 2 * (sign - 0.5))
+
+        x0 = min(x00, self.im_length-mask_length)
+        y0 = min(y00, self.im_length-mask_length)
+        return (y0, y0 + mask_length, x0, x0 + mask_length)
+
+    def random_patch_image(self, img, patch, bboxs, partial=False, randplace=False):
+        if partial:
+            rand_n = max(np.random.randint(bboxs.shape[0]), 1)
+            add_ns = np.random.choice(bboxs.shape[0], rand_n, replace=False)
+        else:
+            rand_n = bboxs.shape[0]
+            add_ns = range(bboxs.shape[0])
+        for i in add_ns:
+            box_width = bboxs[i,2]-bboxs[i,0] 
+            box_height = bboxs[i,3]-bboxs[i,1]
+            height, width = patch.shape[2], patch.shape[3]
+            n = np.random.randint(0, 3)
+            ratio = min(0.5 * min(box_width, box_height)/width, 5)  # bounded
+            patch1 = rot_img(patch, np.pi/2, dtype=torch.cuda.FloatTensor)
+            m = nn.UpsamplingBilinear2d(scale_factor=ratio)
+            patch1 = m(patch1)
+            rl = patch1.shape[-1]
+            if randplace:
+                coors = self.random_box_position(bboxs[i], rl) 
+            else:
+                coors = self.center_box_position(bboxs[i], rl) 
+            img[:,:,coors[0]:coors[1], coors[2]:coors[3]] = patch1
+        return img, rand_n
+
     def gaussian_noise(self, x, severity=1):
         c = [.08, .12, 0.18, 0.26, 0.38][severity - 1]
 
@@ -509,8 +503,8 @@ class AngelicPatch(EvasionAttack):
         x = np.uint8(gaussian(np.array(x) / 255., sigma=c[0], multichannel=True) * 255)
         # locally shuffle pixels
         for i in range(c[2]):
-            for h in range(im_length - c[1], c[1], -1):
-                for w in range(im_length - c[1], c[1], -1):
+            for h in range(self.im_length - c[1], c[1], -1):
+                for w in range(self.im_length - c[1], c[1], -1):
                     dx, dy = np.random.randint(-c[1], c[1], size=(2,))
                     h_prime, w_prime = h + dy, w + dx
                     # swap
@@ -543,7 +537,7 @@ class AngelicPatch(EvasionAttack):
         x = cv2.imdecode(np.fromstring(x.make_blob(), np.uint8),
                         cv2.IMREAD_UNCHANGED)
 
-        if x.shape != (im_length, im_length):
+        if x.shape != (self.im_length, self.im_length):
             return np.expand_dims(np.clip(x[..., [2, 1, 0]], 0, 255), 0)  # BGR to RGB
         else:  # greyscale to RGB
             return np.clip(np.array([x, x, x]).transpose((1, 2, 0)), 0, 255)
@@ -588,7 +582,7 @@ class AngelicPatch(EvasionAttack):
                                 cv2.IMREAD_UNCHANGED) / 255.
         snow_layer = snow_layer[..., np.newaxis]
 
-        x = c[6] * x + (1 - c[6]) * np.maximum(x, cv2.cvtColor(x[0], cv2.COLOR_RGB2GRAY).reshape(im_length, im_length, 1) * 1.5 + 0.5)
+        x = c[6] * x + (1 - c[6]) * np.maximum(x, cv2.cvtColor(x[0], cv2.COLOR_RGB2GRAY).reshape(self.im_length, self.im_length, 1) * 1.5 + 0.5)
         return np.clip(x + snow_layer + np.rot90(snow_layer, k=2), 0, 1) * 255
 
     def spatter(self, x, severity=3):
@@ -632,8 +626,8 @@ class AngelicPatch(EvasionAttack):
         c = [0.6, 0.5, 0.4, 0.3, 0.25][severity - 1]
         x = PILImage.fromarray(np.uint8(x[0]))
 
-        x = x.resize((int(im_length * c), int(im_length * c)), PILImage.BOX)
-        x = x.resize((im_length, im_length), PILImage.BOX)
+        x = x.resize((int(self.im_length * c), int(self.im_length * c)), PILImage.BOX)
+        x = x.resize((self.im_length, self.im_length), PILImage.BOX)
 
         return np.expand_dims(np.array(x), 0)
 
@@ -646,8 +640,8 @@ class AngelicPatch(EvasionAttack):
             (0.6, 0.75)][severity - 1]
         idx = np.random.randint(len(bases))
         frost = bases[idx]
-        x_start, y_start = np.random.randint(0, frost.shape[1] - im_length), np.random.randint(0, frost.shape[2] - im_length)
-        frost_piece = frost[:, x_start:x_start + im_length, y_start:y_start + im_length, :]
+        x_start, y_start = np.random.randint(0, frost.shape[1] - self.im_length), np.random.randint(0, frost.shape[2] - self.im_length)
+        frost_piece = frost[:, x_start:x_start + self.im_length, y_start:y_start + self.im_length, :]
         if train:
             frost_piece = np.transpose(frost_piece, (0,3,1,2))
             return torch.clamp(c[0] * x + c[1] * torch.Tensor(frost_piece).cuda(), 0, 255)
@@ -674,7 +668,7 @@ class AngelicPatch(EvasionAttack):
 
     def fog(self, x, coords=None, severity=1):
         c = [(1.5, 2), (2., 2), (2.5, 1.7), (2.5, 1.5), (3., 1.4)][severity - 1]
-        change = c[0] * plasma_fractal(wibbledecay=c[1])[:im_length, :im_length][..., np.newaxis]
+        change = c[0] * plasma_fractal(wibbledecay=c[1])[:self.im_length, :self.im_length][..., np.newaxis]
         change = np.repeat(change, [3], axis=2) * 255
         max_val = x.max() / 255.
         xx = x + change
@@ -724,7 +718,7 @@ class AngelicPatch(EvasionAttack):
                 min_y, max_y = np.min(obj_y), np.max(obj_y)
                 new_bbox.append([min_y, min_x, max_y, max_x])
             else:
-                new_bbox.append([0, 0, im_length, im_length])
+                new_bbox.append([0, 0, self.im_length, self.im_length])
         
         patched_images = np.expand_dims(np.array(patched_images).astype(np.float32), 0)
         if not clear:
@@ -768,7 +762,7 @@ class AngelicPatch(EvasionAttack):
                 # normalized_x, normalized_y, normalized_x+normalized_width, normalized_y+normalized_height
                 new_bbox.append([min_y, min_x, max_y, max_x])
             else:
-                new_bbox.append([0, 0, im_length, im_length])
+                new_bbox.append([0, 0, self.im_length, self.im_length])
 
         patched_images = np.expand_dims(np.array(patched_images).astype(np.float32), 0)
         if not clear:
