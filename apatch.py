@@ -460,7 +460,7 @@ class AngelicPatch(EvasionAttack):
             box_height = bboxs[i,3]-bboxs[i,1]
             height, width = patch.shape[2], patch.shape[3]
             n = np.random.randint(0, 3)
-            ratio = min(0.5 * min(box_width, box_height)/width, 5)  # bounded
+            ratio = min(0.5 *min(box_width, box_height)/width, 5)  # bounded
             patch1 = rot_img(patch, np.pi/2, dtype=torch.cuda.FloatTensor)
             m = nn.UpsamplingBilinear2d(scale_factor=ratio)
             patch1 = m(patch1)
@@ -648,12 +648,6 @@ class AngelicPatch(EvasionAttack):
         # if coords is None:
         else:
             return np.clip(c[0] * x + c[1] * frost_piece, 0, 255)
-        # else:
-        #     # training
-        #     patch_frosts = []
-        #     for i in range(len(coords)):
-        #         patch_frosts.append(frost_piece[:, coords[i][0]:coords[i][1], coords[i][2]:coords[i][3], :])
-        #     return np.clip(c[0] * x + c[1] * frost_piece, 0, 255), patch_frosts
 
     def contrast(self, x, severity=1):
         c = [0.4, .3, .2, .1, .05][severity - 1]
@@ -703,7 +697,7 @@ class AngelicPatch(EvasionAttack):
                      center location of the patch during sampling.
         :return: The patched images.
         """
-        patched_images, _ = random_patch_image(copy.deepcopy(x), copy.deepcopy(patch_external), gts_boxes)
+        patched_images, _ = self.random_patch_image(copy.deepcopy(x), copy.deepcopy(patch_external), gts_boxes)
         perspective_transformer = torchvision.transforms.RandomAffine(degrees=40, scale=(.9, 1.1), shear=0)    #.RandomPerspective(distortion_scale=np.random.rand()*0.5+0.2, p=1, interpolation=Image.NEAREST)
         patched_images = Image.fromarray(np.uint8(patched_images[0].permute(1,2,0).cpu().numpy())).convert('RGB')
         patched_images, ret = perspective_transformer(patched_images)
