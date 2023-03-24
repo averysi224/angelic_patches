@@ -428,7 +428,7 @@ def main():
             pass
     
     print(cate)
-    print(origin_iou/cnt, ",", patched_iou/cnt)
+    print("IoU 0.5 Acc: Origin", origin_iou/cnt, ", Patched", patched_iou/cnt)
 
 if __name__ == "__main__":
     main()
