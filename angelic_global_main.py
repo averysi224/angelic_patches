@@ -9,7 +9,6 @@ from pytorch_ssd import PyTorchSSD
 from apatch import AngelicPatch
 from pycocotools import mask as maskUtils
 
-import pdb
 import os
 import json
 import copy
@@ -164,16 +163,10 @@ def extract_predictions(predictions_, name, cls, thresh=0.5, eps=1):
     return predictions_["labels"], predictions_boxes, predictions_score, count
 
 def plot_image_with_boxes(img, boxes, pred_cls, cls, gt_boxes=None):
-    text_size = 1
-    text_th = 2
-    rect_th = 2
-
     for i in range(len(boxes)):
         if pred_cls[i] == cls:
             # Draw Rectangle with the coordinates, green
             cv2.rectangle(img, boxes[i][0], boxes[i][1], color=(0, 255, 0), thickness=1)
-            # Write the prediction class
-            # cv2.putText(img, str(pred_cls[i]), boxes[i][0], cv2.FONT_HERSHEY_SIMPLEX, text_size, (255, 255, 255), thickness=text_th)
     if gt_boxes is not None:
         for i in range(len(gt_boxes)):
             gbox = [(gt_boxes[i][0], gt_boxes[i][1]), (gt_boxes[i][2], gt_boxes[i][3])]
@@ -248,7 +241,6 @@ def main():
     partial_test = args.partial
     rand_place = args.randplace
     path2data = args.coco_path # path to coco dataset
-    visualize = args.visualize
     path2json = 'category_json/instances_'+cate+'_train2017.json' # filtered single category json
 
     if aware: 
@@ -291,7 +283,7 @@ def main():
 
     # DataLoader is iterable over Dataset
     for idx, [imgs, annotations, _] in enumerate(data_loader):
-        if len(image) >=load_size:    # if too much data, use first 4000
+        if len(image) >=load_size:   
             break
         if idx % 1000 == 0:
             print(idx)
@@ -386,13 +378,13 @@ def main():
     else:
         if aware:
             patch = np.load("patches/aware/{}/{}/patch_0.5.npy".format(model_name, cate))
+            # load cross patch and test on frcnn/ssd
             # patch = np.load("patches/cross/{}/patch_0.5.npy".format(cate))
         else:
             patch = np.load("patches/agnostic/{}_{}/patch_0.5.npy".format(model_name, cate))
 
     mdl._model.training = False
 
-    pert_data, patch_data = [], []    # prepare data for IoU json 
     original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
     
     mdl._model.training = False
@@ -415,35 +407,19 @@ def main():
                 x_tmp = np.transpose(copy.deepcopy(test_images[j:j+1]), (0,2,3,1))
             else:
                 if c1 > 0:
-                    # actual input (1, 224, 224, 3)
                     x_tmp = getattr(attack, crr)(np.transpose(copy.deepcopy(test_images[j:j+1]), (0,2,3,1)), severity=severity).astype(np.float32)
                 else:
-                    # (1, 3, 224, 224)
-                    # actual input (224, 224, 3, 1)
                     x_tmp = getattr(attack, crr)(np.transpose(copy.deepcopy(test_images[j:j+1]), (0,2,3,1)), bases, severity=severity).astype(np.float32)
-                    # output (1, 224, 224, 3)
             if model_name == "frcnn":
                 pert_predictions = mdl.predict(x=x_tmp)
             else:
                 pert_predictions = mdl.predict(x=np.transpose(x_tmp, (0,3,1,2))/255.)
             
-            # for json, 0 threshold
             try:
-                predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(pert_predictions[0], name="Perturbed", cls=CLS, thresh=0.0)
-                if count > 0:
-                    # json results
-                    for kk in range(len(predictions_boxes)):
-                        res = dict()
-                        res['image_id'] = test_ids[j].item()
-                        res['category_id'] = 1 #CLS
-                        b = predictions_boxes[kk]
-                        res['bbox'] = np.array([b[0][0], b[0][1], b[1][0]-b[0][0], b[1][1]-b[0][1]])
-                        res['score'] = predictions_scores[kk]
-                        pert_data.append(res)
                 # for plot, 0.5 threshold        
                 predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(pert_predictions[0], name="Perturbed", cls=CLS)
                 if count > 0:
-                    if visualize:
+                    if args.visualize:
                         plot_image_with_boxes(img=np.ascontiguousarray(x_tmp[0], dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
                         plt.savefig(DIR+"/" + crr + "_pert_test_image_{}.png".format(j))
                     new_boxes = copy.deepcopy(test_labels['boxes'][j])
@@ -457,7 +433,6 @@ def main():
                 pass
 
             cnt += len(test_labels['boxes'][j])
-            # actual input (40, 3, 224, 224)
             patched_images, rand_n = attack.apply_multi_patch(torch.Tensor(test_images[j:j+1]).cuda(), 
                                                     patch_external=torch.Tensor(patch).cuda(), 
                                                     gts_boxes=torch.Tensor(test_gts_boxes[j]).cuda(), 
@@ -474,20 +449,9 @@ def main():
                 patch_predictions = mdl.predict(np.transpose(patched_images.astype(np.float32), (0,3,1,2))/255.)
             
             try:
-                predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(patch_predictions[0], name="Patched", cls=CLS, thresh=0.0)
-                if count > 0:
-                    # json results
-                    for kk in range(len(predictions_boxes)):
-                        res = dict()
-                        res['image_id'] = test_ids[j].item()
-                        res['category_id'] = 1 #CLS
-                        b = predictions_boxes[kk]
-                        res['bbox'] = np.array([b[0][0], b[0][1], b[1][0]-b[0][0], b[1][1]-b[0][1]])
-                        res['score'] = predictions_scores[kk]
-                        patch_data.append(res)
                 predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(patch_predictions[0], name="Patched", cls=CLS)
                 if count > 0:
-                    if visualize:
+                    if args.visualize:
                         plot_image_with_boxes(img=np.ascontiguousarray(patched_images[0], dtype=np.uint8), boxes=predictions_boxes, pred_cls=predictions_class, gt_boxes=test_labels['boxes'][j], cls=CLS)
                         plt.savefig(DIR+"/" + crr + "_patched_test_image_{}.png".format(j))
                     new_boxes = copy.deepcopy(test_labels['boxes'][j])
@@ -501,17 +465,10 @@ def main():
             except Exception as e:
                 pass
         
-        # print(origin_iou, patched_iou)
         if partial_test:
             print("0.5 IoU high Conf Acc: partial ", origin_iou/cnt, ", Patched", patched_iou/cnt, ", Correct / Patched", patched_iou/patched_cnt)
         else:
             print("IoU 0.5 Acc: Origin", origin_iou/cnt, ", Patched", patched_iou/cnt, origin_iou, patched_iou)
-        
-        with open(DIR+"/" + crr + "_pert_res.json", "w") as out_file:
-                out_file.write(json.dumps(pert_data, cls=NumpyEncoder))
-        with open(DIR+"/" + crr + "_patch_res.json", "w") as out_file:
-            out_file.write(json.dumps(patch_data, cls=NumpyEncoder))
-
 
 if __name__ == "__main__":
     main()

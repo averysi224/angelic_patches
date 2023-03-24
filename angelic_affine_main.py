@@ -160,9 +160,6 @@ def extract_predictions(predictions_, name, cls, thresh=0.5, eps=1):
     return predictions_["labels"], predictions_boxes, predictions_score, count
 
 def plot_image_with_boxes(img, boxes, pred_cls, cls, gt_boxes=None):
-    text_size = 1
-    text_th = 2
-    rect_th = 2
     for i in range(len(boxes)):
         if pred_cls[i] == cls:
             # Draw Rectangle with the coordinates, green
@@ -332,7 +329,6 @@ def main():
             pert_predictions = mdl.predict(x=pert_images)
         else:
             pert_predictions = mdl.predict(x=np.transpose(pert_images, (0,3,1,2))/255.)
-        # for json, 0 threshold
         try:
             # for plot, 0.5 threshold        
             predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(pert_predictions[0], name="Perturbed", cls=CLS)
@@ -359,9 +355,6 @@ def main():
             patch_predictions = mdl.predict(patched_images)
         else:
             patch_predictions = mdl.predict(np.transpose(patched_images.astype(np.float32), (0,3,1,2))/255.)
-        # for ii in range(len(transferred_masks)):
-        #     plt.imshow(transferred_masks[ii].T)
-        #     plt.savefig("affine_frcnn/masks{}_{}.png".format(j, ii))
         try:
             predictions_class, predictions_boxes, predictions_scores, count = extract_predictions(patch_predictions[0], name="Patched", cls=CLS)
             if count > 0:
