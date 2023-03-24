@@ -10,7 +10,6 @@ from art.estimators.object_detection import PyTorchFasterRCNN
 from pytorch_ssd import PyTorchSSD
 from apatch import AngelicPatch
 from tqdm import tqdm
-import pdb
 import os
 import json
 import copy
@@ -282,7 +281,7 @@ def main():
 
     # DataLoader is iterable over Dataset
     for idx, [imgs, annotations, _] in enumerate(data_loader):
-        if len(image) >=load_size:    # if too much data, use first 4000
+        if len(image) >=load_size:    
             break
         if idx % 1000 == 0:
             print(idx)
@@ -347,22 +346,11 @@ def main():
         os.makedirs(DIR)
 
     print(eps)
-    # original_loss_history = {"loss_classifier": 0, "loss_box_reg": 0, "loss_objectness": 0, "loss_rpn_box_reg": 0}
-    # for j in range(train_pert_images.shape[0]):
-    #     y_target = dict()
-    #     y_target['boxes'] = torch.from_numpy(train_labels['boxes'][j]).type(torch.float).cuda()
-    #     y_target["labels"] = torch.from_numpy(train_labels['labels'][j]).cuda()
-    #     y_target["scores"] = torch.from_numpy(1.0 * np.ones([len(train_labels['boxes'][j])])).type(torch.int64).cuda()
-    #     ####################
-    #     origin_loss = get_loss(frcnn, copy.deepcopy(torch.Tensor(train_pert_images[j:j+1]).cuda()), copy.deepcopy(y_target))
-    #     original_loss_history = append_loss_history(original_loss_history, origin_loss, train_pert_images.shape[0])
-    # print("train pert image", original_loss_history)  # train pert image  
     if args.train_patch:
         patch, acc_loss1, acc_loss2 = attack.generate_cross(x=image, target_label=CLS, labels=labels)
     else:
         patch = np.load("patches/cross/"+cate+"/patch_{}.npy".format(eps))
     
-    pert_data, patch_data = [], []    # prepare data for IoU json      
     plt.axis("off")
     plt.title("Adversarial Patch")
     plt.imshow(np.transpose(patch,(0,2,3,1))[0].astype(np.uint8), interpolation="nearest")
@@ -413,8 +401,6 @@ def main():
             pass
 
         cnt += len(test_labels['boxes'][j])
-        # clean change 3
-        # (18, 3, 224, 224)
         patched_images, _ = attack.apply_multi_patch(torch.Tensor(test_images[j:j+1]).cuda(), patch_external=torch.Tensor(patch).cuda(), gts_boxes=torch.Tensor(test_gts_boxes[j]).cuda(),corrupt_type=0,severity=3)
         with torch.no_grad():
             results = yolo5(copy.deepcopy(torch.Tensor(patched_images).permute(0,3,1,2))/255.)[0]
