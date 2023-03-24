@@ -1,6 +1,3 @@
-## TODO
-- check all patch ratios
-
 ## Installation
 This code based on the [Adversarial Robustness Toolbox 1.7.2](https://github.com/Trusted-AI/adversarial-robustness-toolbox/tree/1.7.2) 
 
@@ -35,64 +32,64 @@ return F.affine(img, *ret, interpolation=self.interpolation, fill=fill, center=s
 ```
 
 ## Example Testing
-We provide example patches for all baseline testing. Each run will compute high confident IoU automatically. Detections of patched and unpatched images are also saved. You can try different categories like "person", "bus", "bottle", "chair", "laptop" etc.
+We provide example patches for all baseline testing. Each run will compute high confident IoU automatically. Detections of patched and unpatched images are also saved. You can try different categories like "person", "person", "bottle", "chair", "laptop" etc.
 
 ### Corruption-Aware Tests
 Test F-RCNN corruption-aware patch robustness under frost corruption:
 ```
-python angelic_global_main.py --cate bus --coco_path --model_name frcnn your_COCO_path
+python angelic_global_main.py --cate person --model_name frcnn --visualize --coco_path your_COCO_path
 ```
 
 Test F-RCNN corruption-aware patch robustness without corruption (clear):
 ```
-python angelic_global_main.py --cate bus --coco_path --model_name frcnn your_COCO_path --clear
+python angelic_global_main.py --cate person --model_name frcnn --clear --visualize --coco_path your_COCO_path
 ```
 ### Corruption-Agnostic Tests
 Test F-RCNN corruption-agnostic patch robustness under a series of corruption:
 ```
-python angelic_global_main.py --agnostic --cate bus --model_name frcnn --coco_path your_COCO_path 
+python angelic_global_main.py --agnostic --cate person --model_name frcnn --visualize --coco_path your_COCO_path 
 ```
 ### Corruption-Aware Extra Tests
 
 Test F-RCNN partially applied (only some of the objects are patched) corruption-aware patch robustness under frost corruption:
 ```
-python angelic_global_main.py --cate bus --partial --model_name frcnn --coco_path your_COCO_path 
+python angelic_global_main.py --cate person --partial --model_name frcnn --visualize --coco_path your_COCO_path 
 ```
 
 Test F-RCNN random placed (not in the center) corruption-aware patch robustness under frost corruption:
 ```
-python angelic_global_main.py --cate bus --model_name frcnn --coco_path your_COCO_path --randplace 
+python angelic_global_main.py --cate person --model_name frcnn --randplace  --visualize --coco_path your_COCO_path 
 ```
 
 ### Corruption-Aware Affine Tests
 Test F-RCNN affine robustness under frost corruption:
 ```
-python angelic_affine_main.py --cate bus --model_name frcnn --coco_path your_COCO_path
+python angelic_affine_main.py --cate person --model_name frcnn --coco_path your_COCO_path
 ```
 
 Test F-RCNN affine robustness without corruption (clear):
 ```
-python angelic_affine_main.py --cate bus --model_name frcnn --clear --coco_path your_COCO_path
+python angelic_affine_main.py --cate person --model_name frcnn --clear --coco_path your_COCO_path
 ```
 
 ### Corruption-Aware Cross-Model Tests
 ```
-python angelic_affine_main.py --cate bus --model_name retina --coco_path your_COCO_path
+python angelic_affine_main.py --cate person --model_name retina --visualize --coco_path your_COCO_path 
 ```
 
 ## Example Training
 Train F-RCNN corruption-aware patch robustness under frost corruption:
 ```
-python angelic_global_main.py --cate bus --coco_path your_COCO_path --train_patch 
+python angelic_global_main.py --cate person --train_patch --visualize --coco_path your_COCO_path 
 ```
 
 Train F-RCNN corruption-agnostic patch robustness under frost corruption:
 ```
-python angelic_global_main.py --cate bus --coco_path your_COCO_path --train_patch --agnostic 
+python angelic_global_main.py --cate person --train_patch --agnostic --visualize --coco_path your_COCO_path 
 ```
 
 ## Example Cross-Model Training
 
 ```
-python angelic_cross_main.py --cate bus --model_name retina --train_patch --visualize --coco_path your_COCO_path
+python angelic_cross_main.py --cate person --model_name retina --train_patch --visualize --coco_path your_COCO_path
 ```

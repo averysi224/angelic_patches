@@ -229,8 +229,8 @@ def main():
 
     suffix = "agnostic" if args.agnostic else "aware"
     suffix += "_clear" if args.clear else "_corrupt"
-    suffix += "_partial" if args.clear else ""
-    suffix += "_randplace" if args.clear else ""
+    suffix += "_partial" if args.partial else ""
+    suffix += "_randplace" if args.randplace else ""
 
     DIR_BASE='results/{}/{}_{}'.format(model_name, cate, suffix) 
     aware = not args.agnostic
