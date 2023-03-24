@@ -16,12 +16,11 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-""" global ssd multiple
-This module implements the adversarial patch attack `DPatch` for object detectors.
-This dpatch implement a training process that 
-attach single patch - improve on all instances in the targeted category
+"""
+This module implements the Angelic Patches for object detectors.
+This Angelic patch implement a training process that 
+attach multiple patches - improve on all instances in the targeted category
 
-| Paper link: https://arxiv.org/abs/1806.02299v4
 """
 from __future__ import print_function
 import torch
@@ -51,7 +50,6 @@ import numpy as np
 from tqdm import tqdm
 import logging
 import math
-import pdb
 from typing import Dict, List, Optional, Tuple, Union, TYPE_CHECKING
 
 from art.attacks.attack import EvasionAttack
@@ -185,9 +183,7 @@ def rot_img(x, theta, dtype):
 
 class AngelicPatch(EvasionAttack):
     """
-    Implementation of the DPatch attack.
-
-    | Paper link: https://arxiv.org/abs/1806.02299v4
+    Implementation of the Angelic Patch.
     """
 
     attack_params = EvasionAttack.attack_params + [
@@ -212,14 +208,16 @@ class AngelicPatch(EvasionAttack):
         im_length: int = 224,
     ):
         """
-        Create an instance of the :class:`.DPatch`.
+        Create an instance of the :class:`.AngelicPatch`.
 
         :param estimator: A trained object detector.
+        :param estimator2: An optional trained object detector for cross transferability.
         :param patch_shape: The shape of the adversarial path as a tuple of shape (height, width, nb_channels).
         :param learning_rate: The learning rate of the optimization.
         :param max_iter: The number of optimization steps.
         :param batch_size: The size of the training batch.
         :param verbose: Show progress bars.
+        :param im_length: The size of the image.
         """
         super().__init__(estimator=estimator)
         self.estimator2 = estimator2
@@ -229,6 +227,8 @@ class AngelicPatch(EvasionAttack):
         self.batch_size = batch_size
         self.verbose = verbose
         self.im_length = im_length
+
+        # possible corruptions
         self.cdict = ["frost", "brightness", "fog", "gaussian_noise", "shot_noise", "impulse_noise", 
                         "speckle_noise", "defocus_blur", "motion_blur", "zoom_blur", "snow", "jpeg_compression", 
                         "pixelate", "contrast", "glass_blur", "spatter"]
@@ -246,20 +246,17 @@ class AngelicPatch(EvasionAttack):
         **kwargs
     ) -> np.ndarray:
         """
-        Generate DPatch.
+        Generate AngelicPatch.
 
         :param x: Sample images.
         :param y: Target labels for object detector.
-        :param target_label: The target label of the DPatch attack.
-        :param mask: An boolean array of shape equal to the shape of a single samples (1, H, W) or the shape of `x`
-                     (N, H, W) without their channel dimensions. Any features for which the mask is True can be the
-                     center location of the patch during sampling.
-        :type mask: `np.ndarray`
-        :return: Adversarial patch.
+        :param target_label: The target label of the AngelicPatch attack.
+        :param aware: Whether this is a corruption-aware training or corruption-agnostic training.
+        :param model_name: model to train on.
+        :return: Angelic patch.
         """
         patch_target: List[Dict[str, np.ndarray]] = list()
 
-        # predictions = self.estimator.predict(x=patched_images, standardise_output=True)
         labels = kwargs.get("labels")
         
         for i_image in range(x.shape[0]):
@@ -291,7 +288,8 @@ class AngelicPatch(EvasionAttack):
                 batch_target_cuda['boxes']=torch.Tensor(batch_target['boxes']).cuda()
                 batch_target_cuda['scores']=torch.Tensor(batch_target['scores']).cuda()
                 batch_target_cuda['labels']=torch.Tensor(batch_target['labels']).cuda().to(torch.int64)
-
+                
+                # apply patches on all the target instances
                 patched_images, _ = self.random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
                 if aware:
                     # corruption-aware level 3 training
@@ -333,20 +331,15 @@ class AngelicPatch(EvasionAttack):
         **kwargs
     ) -> np.ndarray:
         """
-        Generate DPatch.
+        Generate AngelicPatch for cross model transferability.
 
         :param x: Sample images.
         :param y: Target labels for object detector.
         :param target_label: The target label of the DPatch attack.
-        :param mask: An boolean array of shape equal to the shape of a single samples (1, H, W) or the shape of `x`
-                     (N, H, W) without their channel dimensions. Any features for which the mask is True can be the
-                     center location of the patch during sampling.
-        :type mask: `np.ndarray`
-        :return: Adversarial patch.
+        :return: Cross patch.
         """
         patch_target: List[Dict[str, np.ndarray]] = list()
 
-        # predictions = self.estimator.predict(x=patched_images, standardise_output=True)
         labels = kwargs.get("labels")
         
         # one image whole target
@@ -367,7 +360,7 @@ class AngelicPatch(EvasionAttack):
             num_batches = math.ceil(x.shape[0] / self.batch_size)
             index = np.arange(num_batches)
             np.random.shuffle(index)
-            if i_step % 1 == 0: #== self.max_iter - 1:
+            if i_step % 1 == 0: 
                 train_loss_final = [0, 0]
                 train_loss_final2 = [0, 0]
 
@@ -385,7 +378,8 @@ class AngelicPatch(EvasionAttack):
                 patched_images, _ = self.random_patch_image(copy.deepcopy(batch_images), patch, batch_target_cuda['boxes'])
                 patched_images = self.frost(patched_images, bases, train=True, severity=3)
                 patched_images = patched_images.to(torch.float32) / 255. 
-                # should put image list inside, however as its single image, its the same
+
+                # update patch on ssd
                 self.estimator._model.train()
                 loss = self.estimator._model(patched_images, [batch_target_cuda])
                 self.estimator2._model.train()
@@ -398,7 +392,7 @@ class AngelicPatch(EvasionAttack):
                 self.estimator._model.zero_grad() 
                 grad.zero_()
 
-                # frcnn
+                # update patch on frcnn
                 loss_sum2 = loss2['loss_box_reg'] + loss2['loss_rpn_box_reg'] + 0.1* loss2['loss_classifier']
                 loss_sum2.retain_grad()
                 grad2 = torch.autograd.grad(loss_sum2, patch)[0]
@@ -410,7 +404,7 @@ class AngelicPatch(EvasionAttack):
                 grad2.zero_()
                 patch = torch.clamp(updated_patch,0,255)
 
-                if i_step % 1 == 0:  # == self.max_iter - 1:
+                if i_step % 1 == 0:  
                     train_loss_final[0] += loss['bbox_regression'].data / len(index)
                     train_loss_final[1] += loss['classification'].data / len(index)
 
@@ -499,7 +493,6 @@ class AngelicPatch(EvasionAttack):
         return np.clip(x + x * np.random.normal(size=x.shape, scale=c), 0, 1) * 255
 
     def glass_blur(self, x, severity=1):
-        # sigma, max_delta, iterations
         c = [(0.7, 1, 2), (0.9, 2, 1), (1, 2, 3), (1.1, 3, 2), (1.5, 4, 2)][severity - 1]
 
         x = np.uint8(gaussian(np.array(x) / 255., sigma=c[0], multichannel=True) * 255)
@@ -689,15 +682,14 @@ class AngelicPatch(EvasionAttack):
         clear=False,
     ) -> np.ndarray:
         """
-        Apply the adversarial patch to images.
+        Apply the angelic patch to images, than apply affine transformations.
 
         :param x: Images to be patched.
         :param patch_external: External patch to apply to images `x`. If None the attacks patch will be applied.
-        :param random_location: True if patch location should be random.
-        :param mask: An boolean array of shape equal to the shape of a single samples (1, H, W) or the shape of `x`
-                     (N, H, W) without their channel dimensions. Any features for which the mask is True can be the
-                     center location of the patch during sampling.
-        :return: The patched images.
+        :param corrupt_type: Frost for affine tests.
+        :param masks: Image masks for compute transformed ground truth bbox.
+        :param clear: If True, give clear images.
+        :return: The affine transformed patched images.
         """
         patched_images, _ = self.random_patch_image(copy.deepcopy(x), copy.deepcopy(patch_external), gts_boxes)
         perspective_transformer = torchvision.transforms.RandomAffine(degrees=40, scale=(.9, 1.1), shear=0)    #.RandomPerspective(distortion_scale=np.random.rand()*0.5+0.2, p=1, interpolation=Image.NEAREST)
@@ -706,7 +698,6 @@ class AngelicPatch(EvasionAttack):
         transferred_masks = [TF.affine(masks[i],  *ret) for i in range(len(masks))]
         new_bbox = []
 
-        # 3, 300, 300, background should be 0
         for ii in range(len(transferred_masks)):
             obj_x, obj_y = np.where(transferred_masks[ii][0] > 0.5)
             if len(obj_x) > 0 and len(obj_y) > 0:
@@ -733,15 +724,14 @@ class AngelicPatch(EvasionAttack):
         clear=False,
     ) -> np.ndarray:
         """
-        Apply the adversarial patch to images.
+        Apply affine transformations.
 
         :param x: Images to be patched.
         :param patch_external: External patch to apply to images `x`. If None the attacks patch will be applied.
-        :param random_location: True if patch location should be random.
-        :param mask: An boolean array of shape equal to the shape of a single samples (1, H, W) or the shape of `x`
-                     (N, H, W) without their channel dimensions. Any features for which the mask is True can be the
-                     center location of the patch during sampling.
-        :return: The patched images.
+        :param corrupt_type: Frost for affine tests.
+        :param masks: Image masks for compute transformed ground truth bbox.
+        :param clear: If True, give clear images.
+        :return: The affine transformed images.
         """
         perspective_transformer = torchvision.transforms.RandomAffine(degrees=40, scale=(.9, 1.1), shear=0)  
         patched_images = Image.fromarray(np.uint8(x[0].permute(1,2,0).cpu().numpy())).convert('RGB')
@@ -749,13 +739,11 @@ class AngelicPatch(EvasionAttack):
         transferred_masks = [TF.affine(masks[i],  *ret) for i in range(len(masks))]
         new_bbox = []
 
-        # 3, 300, 300, background should be 0
         for ii in range(len(transferred_masks)):
             obj_x, obj_y = np.where(transferred_masks[ii][0] > 0.5)
             if len(obj_x) > 0 and len(obj_y) > 0:
                 min_x, max_x = np.min(obj_x), np.max(obj_x)
                 min_y, max_y = np.min(obj_y), np.max(obj_y)
-                # normalized_x, normalized_y, normalized_x+normalized_width, normalized_y+normalized_height
                 new_bbox.append([min_y, min_x, max_y, max_x])
             else:
                 new_bbox.append([0, 0, self.im_length, self.im_length])
@@ -780,23 +768,23 @@ class AngelicPatch(EvasionAttack):
         """
         Apply the adversarial patch to images.
 
+        Apply the angelic patch to images, than apply affine transformations.
+
         :param x: Images to be patched.
+        :param gts_boxes: Ground truth bounding boxes, apply patch in the center.
         :param patch_external: External patch to apply to images `x`. If None the attacks patch will be applied.
-        :param random_location: True if patch location should be random.
-        :param mask: An boolean array of shape equal to the shape of a single samples (1, H, W) or the shape of `x`
-                     (N, H, W) without their channel dimensions. Any features for which the mask is True can be the
-                     center location of the patch during sampling.
-        :return: The patched images.
+        :param corrupt_type: corruption types, see dict.
+        :param severity: Level of corruption.
+        :param rp: If True, apply the patches randomly in bounding boxes.
+        :param partial: If True, apply the patches to some of the instances.
+        :return: The corrupted/clear patched images.
         """
-        # torch.Size([1, 3, 224, 224])
         patched_images, rand_n = self.random_patch_image(copy.deepcopy(x), 
                                             copy.deepcopy(patch_external), 
                                             gts_boxes, 
                                             randplace=rp,
                                             partial=partial)
-        # torch.Size([1, 3, 224, 224])
         patched_images = patched_images.permute(0,2,3,1).cpu().numpy()
-        # patched_images should be a tensor (0, 255)
         if not clear:
             if corrupt_type < 1:
                 patched_images = getattr(self, self.cdict[corrupt_type])(patched_images, bases, severity=severity)

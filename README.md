@@ -1,7 +1,5 @@
 ## TODO
 - check all patch ratios
-- fix comments, Variable/Class names
-- polish argparse and all print functions
 
 ## Installation
 This code based on the [Adversarial Robustness Toolbox 1.7.2](https://github.com/Trusted-AI/adversarial-robustness-toolbox/tree/1.7.2) 
@@ -90,11 +88,11 @@ python angelic_global_main.py --cate bus --coco_path your_COCO_path --train_patc
 
 Train F-RCNN corruption-agnostic patch robustness under frost corruption:
 ```
-python angelic_global_main.py --cate bus --coco_path your_COCO_path --train_patch --agnostic
+python angelic_global_main.py --cate bus --coco_path your_COCO_path --train_patch --agnostic 
 ```
 
 ## Example Cross-Model Training
 
 ```
-python angelic_cross_main.py --cate bus --model_name retina --train_patch --coco_path your_COCO_path
+python angelic_cross_main.py --cate bus --model_name retina --train_patch --visualize --coco_path your_COCO_path
 ```
