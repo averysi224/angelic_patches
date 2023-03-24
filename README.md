@@ -1,7 +1,6 @@
 ## TODO
 - check all patch ratios
 - fix comments, Variable/Class names
-- fix license
 - polish argparse and all print functions
 
 ## Installation
@@ -13,7 +12,7 @@ This code based on the [Adversarial Robustness Toolbox 1.7.2](https://github.com
 ```
 git clone --depth 1 --branch 1.7.2 https://github.com/Trusted-AI/adversarial-robustness-toolbox.git
 cd adversarial-robustness-toolbox
-pip install .
+pip install -e .
 ```
 - Step 2: Download our code and run.
 
