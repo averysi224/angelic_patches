@@ -16,9 +16,6 @@
 # TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-"""
-This module implements the task specific estimator for PyTorch object detectors.
-"""
 import logging
 from typing import List, Dict, Optional, Tuple, Union, TYPE_CHECKING
 
@@ -208,10 +205,6 @@ class PyTorchSSD(ObjectDetectorMixin, PyTorchEstimator):
 
             for i in range(x.shape[0]):
                 if isinstance(x, np.ndarray):
-                    # if self.clip_values is not None:
-                    #     x_grad = transform(x[i] / self.clip_values[1]).to(self.device)
-                    # else:
-                    #     x_grad = transform(x[i]).to(self.device)
                     x_grad = torch.from_numpy(x[i]).to(self.device)
                     x_grad.requires_grad = True
                 else:
@@ -226,7 +219,6 @@ class PyTorchSSD(ObjectDetectorMixin, PyTorchEstimator):
                 )
                 inputs_t = x_preprocessed_i
                 for i_preprocessed in range(x_preprocessed_i.shape[0]):
-                    # inputs_t.append(x_preprocessed_i[i_preprocessed])
                     y_preprocessed.append(y_preprocessed_i[i_preprocessed])
 
         elif isinstance(x, np.ndarray):
@@ -247,13 +239,8 @@ class PyTorchSSD(ObjectDetectorMixin, PyTorchEstimator):
             image_tensor_list_grad = []
 
             for i in range(x_preprocessed.shape[0]):
-                # if self.clip_values is not None:
-                #     x_grad = transform(x_preprocessed[i] / self.clip_values[1]).to(self.device)
-                # else:
-                #     x_grad = transform(x_preprocessed[i]).to(self.device)
                 x_grad = torch.from_numpy(x_preprocessed[i]).to(self.device)
                 x_grad.requires_grad = True
-                # image_tensor_list_grad.append(x_grad)
                 image_tensor_list_grad = x_grad
 
             inputs_t = image_tensor_list_grad
@@ -265,9 +252,7 @@ class PyTorchSSD(ObjectDetectorMixin, PyTorchEstimator):
         else:
             labels_t = y_preprocessed  # type: ignore
 
-        # labels_t = translate_art_to_yolo_target(art_targets=labels_t)
         inputs_t = torch.swapaxes(inputs_t, 0, 3)[:,:,:,0]
-        # loss_components = self._model(inputs_t, labels_t)
         loss_components = self._model([inputs_t], labels_t)
 
         return loss_components, inputs_t, image_tensor_list_grad
@@ -369,10 +354,6 @@ class PyTorchSSD(ObjectDetectorMixin, PyTorchEstimator):
         transform = torchvision.transforms.Compose([torchvision.transforms.ToTensor()])
         image_tensor_list = x
 
-        # if self.clip_values is not None:
-        #     norm_factor = self.clip_values[1]
-        # else:
-        #     norm_factor = 1.0
         import torch
 
         image_tensor_list = torch.from_numpy(image_tensor_list).to(self.device)
